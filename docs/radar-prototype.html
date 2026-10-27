@@ -77,9 +77,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .radar-bar button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
 .radar-time { font-family: var(--font-data); font-weight: 500; letter-spacing: 0; text-transform: none; min-width: 11em; }
 .radar-bar input[type=range] { width: 110px; accent-color: var(--fg); }
+.radar-op { display: flex; align-items: center; gap: 6px; padding-left: 8px; border-left: 1px solid var(--line); }
+.radar-op input[type=range] { width: 70px; }
 .radar-key { position: absolute; left: 10px; top: 10px; display: flex; gap: 3px; align-items: center; padding: 4px 7px; background: rgba(8,9,8,.75); border: 1px solid var(--line-soft); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .radar-key i { width: 14px; height: 8px; display: inline-block; }
 .radar-key span { margin: 0 4px; }
+.radar-pattern { color: var(--fg); font-weight: 700; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
 @media (max-width: 520px) { .radar-key { display: none; } .radar-time { min-width: 0; } .radar-bar { left: 10px; flex-wrap: wrap; } .radar-bar input[type=range] { flex: 1; width: auto; } }
 .map-note { position: absolute; left: 12px; bottom: 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(199,197,180,.35); }
 .loc { position: absolute; transform: translate(-7px, -7px); display: flex; align-items: center; gap: 7px; background: none; border: 0; padding: 0; white-space: nowrap; }
@@ -238,6 +241,8 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
           <button type="button" id="radarPlay" aria-pressed="false">Play raid</button>
           <input type="range" id="radarScrub" min="0" max="1000" value="0" aria-label="Raid time on the radar">
           <span class="radar-time" id="radarTime" aria-live="off"></span>
+          <label class="radar-op">Opacity <input type="range" id="opacity" min="20" max="150" step="5" value="100" aria-describedby="opacityHint"></label>
+          <span id="opacityHint" hidden>Also an F12 setting in the mod.</span>
         </div>
       </div>
       <div class="side">
@@ -281,9 +286,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         <span class="mono" id="loadLabel"></span>
         <label class="check"><input id="lock" type="checkbox" checked> Lock the raid's weather when the slot is confirmed</label>
       </div>
-      <div class="field"><span>Radar opacity</span>
-        <input id="opacity" type="range" min="20" max="150" step="5" value="100">
-        <span class="mono" id="opacityLabel"></span>
+      <div class="field"><span>Other mods</span>
         <label class="check"><input id="territories" type="checkbox"> TushonkaTerritories installed (its faction map under the radar)</label>
       </div>
       <div class="field"><span>Server restart</span>
@@ -322,7 +325,8 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     <div>
       <h3>How the field works</h3>
       <ul>
-        <li>Rain cells and fog banks spawn upwind, drift with a slowly turning wind, and grow and fade over three to eight in-game hours. Fog favours the small hours.</li>
+        <li>Every 8 in-game hours the region rolls a weather pattern: fair weather, unsettled, prolonged rain, a storm front, or coastal fog. Weather already in the sky carries over, so patterns hand over gradually.</li>
+        <li>Storms have shapes: small lumpy showers; fronts and squall lines as long curved bands across the wind, sharp in front with rain trailing behind; a wide, slow shield of prolonged rain; fog lying along the coast. Noise roughens every edge and breaks rain into cells.</li>
         <li>Each location samples the field at its marker every 14 in-game minutes (two real minutes). The cards, the radar and the raid all read those samples.</li>
         <li>Everything comes from one seed, so saving the seed is all a server restart needs.</li>
         <li>Thresholds have a little hysteresis so a cell edge passing over a map doesn't flicker the forecast.</li>
@@ -447,45 +451,151 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     return { dir: s + 0.9 * Math.sin(t / 150000 + s), str: 0.5 + 0.5 * Math.sin(t / 47000 + s * 1.7) };
   }
 
+  // ---- weather patterns ----
+  // Every 8 in-game hours (about 69 real minutes) the region rolls a pattern that sets what kind of
+  // weather forms: long stretches of rain, settled fine weather, fog along the coast, a storm front.
+  // Weather already in the sky carries over, so patterns hand over gradually rather than switching.
+  var PERIOD_S = 8 * 3600;
+  var PATTERNS = {
+    fair:      { name: "Fair weather",   weight: 30, showers: 0.06, fronts: 0,    fog: 0.5, clouds: -0.75 },
+    unsettled: { name: "Unsettled",      weight: 28, showers: 0.85, fronts: 0.14, fog: 1,   clouds: 0.1 },
+    longrain:  { name: "Prolonged rain", weight: 14, showers: 0.35, fronts: 0,    fog: 1,   clouds: 0.7, shield: true },
+    coastfog:  { name: "Coastal fog",    weight: 14, showers: 0.12, fronts: 0,    fog: 1,   clouds: -0.3, coast: true },
+    storms:    { name: "Storm front",    weight: 10, showers: 0.55, fronts: 0,    fog: 0.3, clouds: 0.45, squall: true }
+  };
+  // The coast: Lighthouse, Shoreline and Icebreaker's water sit on the region's western edge.
+  var COAST_X = 88, COAST_Y = 215;
+  var patternCache = {};
+  function patternOfPeriod(p) {
+    var key = state.seed + ":" + p;
+    if (patternCache[key]) return patternCache[key];
+    var r = rng(mix(state.seed ^ 0x5bd1e995, p)), total = 0, k;
+    for (k in PATTERNS) total += PATTERNS[k].weight;
+    var x = r() * total;
+    for (k in PATTERNS) { x -= PATTERNS[k].weight; if (x < 0) break; }
+    return (patternCache[key] = k);
+  }
+  /** The pattern at time t, with when it began and when it ends (runs of the same pattern merged). */
+  function patternAt(t) {
+    var p = Math.floor(t / PERIOD_S), key = patternOfPeriod(p), a = p, b = p;
+    while (a > p - 6 && patternOfPeriod(a - 1) === key) a--;
+    while (b < p + 6 && patternOfPeriod(b + 1) === key) b++;
+    return { key: key, def: PATTERNS[key], start: a * PERIOD_S, end: (b + 1) * PERIOD_S };
+  }
+  /** Background cloudiness eases from one pattern's level to the next over the first hour of a period. */
+  function patternClouds(t) {
+    var p = Math.floor(t / PERIOD_S), cur = PATTERNS[patternOfPeriod(p)].clouds, prev = PATTERNS[patternOfPeriod(p - 1)].clouds;
+    return prev + (cur - prev) * smoothstep(0, 3600, t - p * PERIOD_S);
+  }
+
+  // ---- storm shapes ----
+  // Showers are small lumpy cells; fronts and squall lines are long curved bands lying across the wind,
+  // sharp at the leading edge with rain trailing behind; a prolonged-rain shield is a wide, slow band;
+  // fog banks drift slowly, and coastal fog lies along the coast. Noise then roughens every edge.
   var cellCache = {};
-  function makeCell(r, t0, kind) {
-    var birth = t0 + r() * 3600, life = (kind === "fog" ? 4 : 3) * 3600 + r() * 5 * 3600;
-    var w = windAt(birth), speed = (kind === "fog" ? 0.25 : 1) * (0.6 + 0.8 * r()) * (W * 1.1) / (9 * 3600);
-    // Start upwind of the middle, spread across the wind, so most cells cross part of the region.
-    var travel = speed * life * (0.3 + 0.4 * r()), side = (r() - 0.5) * 520;
-    return {
-      kind: kind, birth: birth, life: life,
-      x0: W / 2 - Math.cos(w.dir) * travel - Math.sin(w.dir) * side,
-      y0: H / 2 - Math.sin(w.dir) * travel + Math.cos(w.dir) * side,
-      vx: Math.cos(w.dir) * speed, vy: Math.sin(w.dir) * speed,
-      radius: kind === "fog" ? 110 + 90 * r() : 40 + 80 * r(),
-      peak: kind === "fog" ? 0.6 + 0.4 * r() : 0.35 + 0.65 * r()
+  var SPEED = (W * 1.1) / (9 * 3600); // a typical cell crosses the region in about nine in-game hours
+  var KINDS = {
+    shower:   { life: [2, 5],  speed: 1,    width: [22, 50],   length: [1.2, 2.2], peak: [0.35, 1],    trail: 1.6, curve: 0,      plateau: false },
+    front:    { life: [5, 9],  speed: 0.9,  width: [28, 48],   length: [260, 480], peak: [0.5, 0.9],   trail: 2.4, curve: 0.0012, plateau: false },
+    squall:   { life: [7, 10], speed: 1.35, width: [20, 32],   length: [420, 650], peak: [0.85, 1],    trail: 2.8, curve: 0.0016, plateau: true },
+    shield:   { life: [11, 11],speed: 0.25, width: [150, 210], length: [620, 820], peak: [0.36, 0.5],  trail: 1.4, curve: 0.0003, plateau: true },
+    fog:      { life: [4, 9],  speed: 0.25, width: [80, 130],  length: [140, 260], peak: [0.6, 1],     trail: 1.2, curve: 0,      plateau: false },
+    coastfog: { life: [10, 10],speed: 0.02, width: [48, 66],   length: [440, 500], peak: [0.85, 1],    trail: 1.3, curve: 0,      plateau: true }
+  };
+  function span(r, range) { return range[0] + (range[1] - range[0]) * r(); }
+  function makeCell(r, t0, kind, atStart) {
+    // Pattern systems are born exactly at their hour: that hour is when activeCells starts looking at them,
+    // so an earlier birth would make them pop in part-grown.
+    var k = KINDS[kind], birth = atStart ? t0 : t0 + r() * 3600, life = span(r, k.life) * 3600;
+    var w = windAt(birth), speed = k.speed * (0.75 + 0.5 * r()) * SPEED, width = span(r, k.width);
+    var length = kind === "shower" ? width * span(r, k.length) : span(r, k.length);
+    var ang = kind === "shower" ? w.dir + (r() - 0.5) * 1.4 : w.dir;
+    var c = {
+      kind: kind, fog: kind === "fog" || kind === "coastfog", birth: birth, life: life,
+      vx: Math.cos(w.dir) * speed, vy: Math.sin(w.dir) * speed, ang: ang,
+      width: width, length: length, peak: span(r, k.peak), trail: k.trail,
+      curve: k.curve * (r() < 0.5 ? -1 : 1), plateau: k.plateau
     };
+    if (kind === "coastfog") {
+      // Lies along the coast (north-south), drifting only a little on or off shore.
+      c.ang = 0; c.vx = (r() - 0.5) * 0.0006; c.vy = 0;
+      c.x0 = COAST_X + (r() - 0.5) * 24; c.y0 = COAST_Y + (r() - 0.5) * 40;
+    } else if (kind === "shield") {
+      // Arrives over the region and lingers: starts a little upwind of the middle.
+      c.x0 = W / 2 - Math.cos(w.dir) * 120 + (r() - 0.5) * 120;
+      c.y0 = H / 2 - Math.sin(w.dir) * 120 + (r() - 0.5) * 80;
+    } else {
+      // Start upwind and spread across the wind, so most cells cross part of the region.
+      var travel = speed * life * (kind === "squall" || kind === "front" ? 0.5 : 0.3 + 0.4 * r()), side = (r() - 0.5) * 520;
+      c.x0 = W / 2 - Math.cos(w.dir) * travel - Math.sin(w.dir) * side;
+      c.y0 = H / 2 - Math.sin(w.dir) * travel + Math.cos(w.dir) * side;
+    }
+    return c;
   }
   function cellsForHour(h) {
     var key = state.seed + ":" + h;
     if (cellCache[key]) return cellCache[key];
     var r = rng(mix(state.seed, h)), out = [], hourOfDay = ((h % 24) + 24) % 24;
-    var rainCells = r() < 0.5 ? 0 : r() < 0.75 ? 1 : 2;
-    for (var i = 0; i < rainCells; i++) out.push(makeCell(r, h * 3600, "rain"));
-    if (r() < (hourOfDay >= 1 && hourOfDay <= 8 ? 0.35 : 0.06)) out.push(makeCell(r, h * 3600, "fog"));
+    var t0 = h * 3600, pat = patternAt(t0 + 1800).def, periodStart = t0 % PERIOD_S === 0;
+    if (r() < pat.showers) out.push(makeCell(r, t0, "shower"));
+    if (r() < pat.showers * 0.4) out.push(makeCell(r, t0, "shower"));
+    if (r() < pat.fronts) out.push(makeCell(r, t0, "front"));
+    if (periodStart && pat.shield) out.push(makeCell(r, t0, "shield", true));
+    if (periodStart && pat.squall) out.push(makeCell(r, t0, "squall", true));
+    if (periodStart && pat.coast) out.push(makeCell(r, t0, "coastfog", true));
+    if (r() < (hourOfDay >= 1 && hourOfDay <= 8 ? 0.3 : 0.05) * pat.fog) out.push(makeCell(r, t0, "fog"));
     return (cellCache[key] = out);
   }
   function activeCells(t) {
     var h = Math.floor(t / 3600), out = [];
-    for (var k = h - 9; k <= h; k++) cellsForHour(k).forEach(function (c) { if (t >= c.birth && t <= c.birth + c.life) out.push(c); });
+    for (var k = h - 12; k <= h; k++) cellsForHour(k).forEach(function (c) { if (t >= c.birth && t <= c.birth + c.life) out.push(c); });
     return out;
   }
-  // Rain and fog strength (0..1) at a point; overlapping cells combine like probabilities.
+
+  // ---- noise ----
+  // Smooth 3-D value noise (x, y, time) from the seed. Warps the coordinates storms are measured in, and
+  // gives rain its patchy, cellular texture, which slowly evolves.
+  function lattice(x, y, z) { return (mix(mix(mix(state.seed, x), y), z) >>> 0) / 4294967296; }
+  function vnoise(x, y, z) {
+    var xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+    function L(a, b, f) { return a + (b - a) * f; }
+    return L(
+      L(L(lattice(xi, yi, zi), lattice(xi + 1, yi, zi), u), L(lattice(xi, yi + 1, zi), lattice(xi + 1, yi + 1, zi), u), v),
+      L(L(lattice(xi, yi, zi + 1), lattice(xi + 1, yi, zi + 1), u), L(lattice(xi, yi + 1, zi + 1), lattice(xi + 1, yi + 1, zi + 1), u), v), w);
+  }
+  function fbm(x, y, z) {
+    var a = 0.5, sum = 0, norm = 0;
+    for (var o = 0; o < 4; o++) { sum += a * vnoise(x, y, z); norm += a; x *= 2.03; y *= 2.03; z *= 1.6; a *= 0.5; }
+    return sum / norm;
+  }
+
+  function cellValue(c, x, y, t) {
+    var age = (t - c.birth) / c.life;
+    if (age < 0 || age > 1) return 0;
+    var env = c.plateau ? smoothstep(0, 0.12, age) * (1 - smoothstep(0.85, 1, age)) : Math.pow(Math.sin(Math.PI * age), 0.7);
+    var dx = x - (c.x0 + c.vx * (t - c.birth)), dy = y - (c.y0 + c.vy * (t - c.birth));
+    var ca = Math.cos(c.ang), sa = Math.sin(c.ang);
+    var along = dx * ca + dy * sa, across = -dx * sa + dy * ca;
+    along -= c.curve * across * across;             // bows the band
+    var w = along > 0 ? c.width : c.width * c.trail; // sharp leading edge, trailing rain behind
+    return c.peak * env * Math.exp(-1.5 * (along * along / (w * w) + across * across / (c.length * c.length)));
+  }
+
+  // Rain and fog strength (0..1) at a point. Overlapping cells combine like probabilities; the point is
+  // first nudged by noise (ragged edges), and rain is then broken up by a noise texture (cells and gaps).
   function fieldAt(cells, x, y, t) {
+    var z = t / 1800;
+    var wx = x + 36 * (vnoise(x / 70, y / 70, z) - 0.5), wy = y + 36 * (vnoise(x / 70 + 31.7, y / 70 + 17.3, z) - 0.5);
     var dry = 1, clear = 1;
     for (var i = 0; i < cells.length; i++) {
-      var c = cells[i], age = (t - c.birth) / c.life, env = Math.pow(Math.sin(Math.PI * age), 0.7);
-      var dx = x - (c.x0 + c.vx * (t - c.birth)), dy = y - (c.y0 + c.vy * (t - c.birth));
-      var v = c.peak * env * Math.exp(-(dx * dx + dy * dy) / (2 * c.radius * c.radius));
-      if (c.kind === "rain") dry *= 1 - v; else clear *= 1 - v;
+      var v = cellValue(cells[i], wx, wy, t);
+      if (cells[i].fog) clear *= 1 - v; else dry *= 1 - v;
     }
-    return { rain: 1 - dry, fog: 1 - clear };
+    var rain = 1 - dry, fog = 1 - clear;
+    if (rain > 0.01) rain = Math.min(1, rain * Math.max(0, 0.3 + 1.0 * fbm(wx / 55, wy / 55, z * 0.7)));
+    if (fog > 0.01) fog = Math.min(1, fog * (0.75 + 0.4 * vnoise(wx / 90 + 5.1, wy / 90 + 9.3, z * 0.5)));
+    return { rain: rain, fog: fog };
   }
 
   // Levels with a little hysteresis: going up needs the value a margin past the threshold, coming down a
@@ -500,12 +610,13 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   // A location's schedule: the field sampled at its marker. These samples are what the server would send
   // as the raid's weather nodes, so the card, the radar and the raid read the same numbers.
   function blocksFor(map, from, to) {
-    var out = [], t = Math.floor(from / STEP) * STEP - 6 * STEP, rl = null, fl = null, s = (state.seed % 997) / 997 * 7;
+    var out = [], t = Math.floor(from / STEP) * STEP - 6 * STEP, rl = null, fl = null;
     for (; t < to; t += STEP) {
       var f = fieldAt(activeCells(t), map.x, map.y, t), w = windAt(t);
       rl = level(f.rain, RAIN_STEPS, rl);
       fl = level(f.fog, FOG_STEPS, fl);
-      var base = -1 + 1.6 * (0.5 + 0.5 * Math.sin(t / 26000 + s * 2.3) * Math.cos(t / 71000 + s));
+      // Background cloud follows the pattern (fine weather clear, prolonged rain grey), with a little drift.
+      var base = Math.max(-1, Math.min(1, patternClouds(t) + 0.25 * Math.sin(t / 9000 + map.x / 90)));
       var clouds = rl ? Math.min(1.2, 0.85 + 0.4 * f.rain) : Math.min(1, base + 1.6 * f.rain);
       if (t + STEP <= from) continue; // warm-up samples only seed the hysteresis
       out.push({
@@ -618,7 +729,10 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   function renderScreen(cards) {
     var m = state.map, times = slotTimes();
     el("locName").textContent = m.name;
-    el("facts").innerHTML = "<dt>Raid time</dt><dd>" + m.raid + " min</dd><dt>Typical raid</dt><dd>~" + m.typical + " min</dd><dt>Average level</dt><dd>" + m.level + "</dd>";
+    // The weather pattern for the selected slot, and how long it lasts: a heads-up for a long rain or fog.
+    var pat = patternAt(times[state.slot] != null ? times[state.slot] : times[0]);
+    el("facts").innerHTML = "<dt>Raid time</dt><dd>" + m.raid + " min</dd><dt>Typical raid</dt><dd>~" + m.typical + " min</dd><dt>Average level</dt><dd>" + m.level + "</dd>" +
+      (m.indoor ? "" : "<dt>Weather pattern</dt><dd>" + esc(pat.def.name) + " until ~" + hhmm(pat.end) + "</dd>");
     el("slotsLabel").textContent = m.indoor ? "Time" : "Time and weather";
     el("slotHint").textContent = m.indoor ? "" : "Forecast for the whole raid. Weather is set when you press Next.";
 
@@ -699,7 +813,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   // ---- radar ------------------------------------------------------------------
   // Draws the same field the locations sample, at the radar's time: the selected slot's start, or
   // playing through that slot's raid when "Play raid" is on.
-  var PLAY_SECONDS = 8, GW = 240, GH = 160;
+  var PLAY_SECONDS = 8, GW = 192, GH = 128;
   var radar = el("radar"), rctx = radar.getContext("2d");
   var buf = document.createElement("canvas"); buf.width = GW; buf.height = GH;
   var bctx = buf.getContext("2d"), img = bctx.createImageData(GW, GH);
@@ -715,7 +829,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   }
   function radarKey() {
     var ramp = state.winter ? SNOW_RAMP : RAIN_RAMP;
-    el("radarKey").innerHTML = "<span>" + (state.winter ? "Snow" : "Rain") + "</span>" +
+    el("radarKey").innerHTML = "<b id=\"radarPattern\" class=\"radar-pattern\"></b><span>" + (state.winter ? "Snow" : "Rain") + "</span>" +
       ramp.map(function (c) { return "<i style=\"background:rgb(" + c.join(",") + ")\"></i>"; }).join("") +
       "<span>Fog</span><i style=\"background:rgba(176,176,166,.55)\"></i>";
   }
@@ -772,7 +886,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   function frame(now) {
     var rt = radarTime();
-    if (state.radarOn && (radarDirty || (rt.t !== lastRadarT && now - lastPaint > 50))) {
+    if (state.radarOn && (radarDirty || (rt.t !== lastRadarT && now - lastPaint > 90))) {
       paintField(rt.t); lastRadarT = rt.t; lastPaint = now; radarDirty = false;
     }
     sizeRadar();
@@ -790,6 +904,8 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     el("radarTime").textContent = state.radarOn
       ? hhmm(rt.t) + (state.scrub > 0 ? "  +" + Math.floor(rt.minute) + " min" : "") + (rt.end ? " · raid end" : "")
       : "";
+    var patName = patternAt(rt.t).def.name;
+    if (el("radarPattern").textContent !== patName) el("radarPattern").textContent = patName;
     requestAnimationFrame(frame);
   }
 
@@ -864,7 +980,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   el("lock").addEventListener("change", function (e) { state.lock = e.target.checked; render(); });
   el("restart").addEventListener("click", function () {
     var kept = el("persist").checked, at = new Date();
-    if (!kept) { state.seed = newSeed(); cellCache = {}; }
+    if (!kept) { state.seed = newSeed(); cellCache = {}; patternCache = {}; }
     render();
     var clock = pad(at.getHours()) + ":" + pad(at.getMinutes());
     el("status").innerHTML = kept
@@ -889,10 +1005,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   });
   el("opacity").addEventListener("input", function (e) {
     state.opacity = Number(e.target.value) / 100;
-    el("opacityLabel").textContent = e.target.value + "% (F12 setting in the mod)";
+    e.target.title = e.target.value + "%";
     radarDirty = true;
   });
-  el("opacityLabel").textContent = "100% (F12 setting in the mod)";
   el("territories").addEventListener("change", function (e) {
     state.territories = e.target.checked;
     el("territory").hidden = !state.territories;
