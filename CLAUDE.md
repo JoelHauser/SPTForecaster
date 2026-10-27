@@ -55,6 +55,20 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
 - **Maps** (`Maps.cs`): no forecast on factory4_day/night, laboratory, Labyrinth, icebreaker, hideout.
   Icebreaker: right toggle hidden, clock text forced to 23:00:00 every frame.
 
+## Compatibility: TushonkaTerritories (github.com/minesettimi/TushonkaTerritories, read 2026-10-27)
+
+Joel uses it; it also works on the location screen. GUID `com.minesettimi.territories`.
+- **No overlap with 0.0.1.** It never touches weather, time, `LocationConditionsPanel` or the Next/Ready
+  handlers; its server only reads `EscapeTimeLimit` for spawns. It adds a description block to
+  `_infoPanel/DescriptionPanel` and recolours `LocationButton` (`_defaultColor`/`_specialColor`).
+- **Shares the map with the radar (radar-prototype branch).** In `MatchMakerSelectionLocationScreen.Awake`
+  it instantiates `TerritoryMap.prefab` as the first child of `Content/Map/Image`: a Voronoi image in
+  faction colours (data.json: scav #055e1e, raider #FA8014, rogue #4F7061, ruaf #011e09, untar #5b92e5,
+  cultist #7D04D6, blackdiv #000000), cells from the buttons' screen positions. The radar must go above
+  it and below the buttons/paths, stay translucent, and not recolour buttons. Buttons sit at
+  `(IconX/1000, IconY/1000)` of their container (`LocationButton.Show`), so a radar image stretched over
+  `_locationButtonsContainer`'s rect lines up at any resolution.
+
 ## What the first test has to look at
 
 1. Server console: `[SPTForecaster] 0.0.1 loaded, N weather blocks ready.` BepInEx log:

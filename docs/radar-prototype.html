@@ -70,7 +70,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .map-inner { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); aspect-ratio: 3 / 2; }
 .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 [hidden] { display: none !important; }
-#radar { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#radar, #territory { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .radar-bar { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(8,9,8,.82); border: 1px solid var(--line); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
 .radar-bar button { padding: 3px 10px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--fg); font: inherit; letter-spacing: inherit; text-transform: inherit; }
 .radar-bar button:hover { border-color: var(--fg); }
@@ -227,6 +227,8 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
           <rect width="600" height="400" fill="url(#grid)"/>
           <text x="300" y="392" text-anchor="middle" fill="rgba(199,197,180,.18)" font-size="11" letter-spacing="2" font-family="Rajdhani, sans-serif">GAME MAP ART GOES HERE · MARKERS AT THE GAME'S OWN POSITIONS</text>
         </svg>
+        <!-- Layer order as the mod would place them: map art, TushonkaTerritories' faction map (if installed), radar, then the game's buttons. -->
+        <canvas id="territory" width="600" height="400" aria-hidden="true" hidden></canvas>
         <canvas id="radar" width="600" height="400" aria-hidden="true"></canvas>
         <div id="locs"></div>
         </div>
@@ -279,6 +281,11 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         <span class="mono" id="loadLabel"></span>
         <label class="check"><input id="lock" type="checkbox" checked> Lock the raid's weather when the slot is confirmed</label>
       </div>
+      <div class="field"><span>Radar opacity</span>
+        <input id="opacity" type="range" min="20" max="150" step="5" value="100">
+        <span class="mono" id="opacityLabel"></span>
+        <label class="check"><input id="territories" type="checkbox"> TushonkaTerritories installed (its faction map under the radar)</label>
+      </div>
       <div class="field"><span>Server restart</span>
         <button class="ctl" id="restart" type="button">Restart server</button>
         <label class="check"><input id="persist" type="checkbox" checked> Keep the schedule across restarts</label>
@@ -319,6 +326,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         <li>Each location samples the field at its marker every 14 in-game minutes (two real minutes). The cards, the radar and the raid all read those samples.</li>
         <li>Everything comes from one seed, so saving the seed is all a server restart needs.</li>
         <li>Thresholds have a little hysteresis so a cell edge passing over a map doesn't flicker the forecast.</li>
+        <li>The radar is a light wash with fine outlines at each rain level, so the map art and TushonkaTerritories' faction colours show through it.</li>
       </ul>
     </div>
   </section>
@@ -564,17 +572,27 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     if (segs.length === 1) {
       return { main: { text: first.label + " all raid", g: first.g, night: night0 }, lines: [{ text: first.wind, g: first.windG }], segs: segs };
     }
-    for (var k = 1; k < segs.length && k <= 2; k++) {
-      var m = segs[k].from, phrase = changePhrase(segs[k - 1].r, segs[k].r, whenWords(m));
-      lines.push({ text: phrase.charAt(0).toUpperCase() + phrase.slice(1), g: segs[k].r.g, night: isNight(t0 + m * 60 * ACCEL) });
+    // A step that is gone before the card could name a different time for the next one (under 2.5 raid
+    // minutes, or rounding to the same ~5 min) is folded into the change after it, so the card reads
+    // "Heavy rain from ~5 min" rather than "Rain from ~5 min, Heavy rain from ~5 min".
+    function slot5(m) { return m < 2.5 ? 0 : Math.round(m / 5); }
+    var steps = [segs[0]];
+    for (var s = 1; s < segs.length; s++) {
+      var next = segs[s + 1];
+      if (next && (next.from - segs[s].from < 2.5 || slot5(next.from) === slot5(segs[s].from))) continue;
+      steps.push(segs[s]);
     }
-    if (segs.length > 3) lines.push({ text: "More changes after ~" + Math.round(segs[3].from / 5) * 5 + " min", more: true });
+    for (var k = 1; k < steps.length && k <= 2; k++) {
+      var m = steps[k].from, phrase = changePhrase(steps[k - 1].r, steps[k].r, whenWords(m));
+      lines.push({ text: phrase.charAt(0).toUpperCase() + phrase.slice(1), g: steps[k].r.g, night: isNight(t0 + m * 60 * ACCEL) });
+    }
+    if (steps.length > 3) lines.push({ text: "More changes after ~" + Math.round(steps[3].from / 5) * 5 + " min", more: true });
     return { main: { text: first.label, g: first.g, night: night0 }, lines: lines, segs: segs };
   }
 
   // ---- state ----------------------------------------------------------------
   var el = function (id) { return document.getElementById(id); };
-  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0, playFrom: 0, scrub: 0 };
+  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0, playFrom: 0, scrub: 0, opacity: 1, territories: false };
 
   function nowReal() { return Date.now() + state.ahead * 60e3; }
   function slotTimes() {
@@ -735,14 +753,17 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var cells = activeCells(t), d = img.data;
     for (var j = 0; j < GH; j++) {
       for (var i = 0; i < GW; i++) {
-        // Colour and opacity both follow the field continuously, so cells fade in at their edges
-        // instead of stepping on at a threshold. Fog sits under rain and shows where rain is light.
+        // A light wash that follows the field continuously (at most about a third opaque, so the map art
+        // and any faction colours stay readable through it), plus a fine outline where intensity crosses
+        // each rain level, so the shape of a storm reads without filling it in. Fog is a faint grey veil.
         var f = fieldAt(cells, (i + 0.5) * W / GW, (j + 0.5) * H / GH, t), k = (j * GW + i) * 4;
-        var ra = smoothstep(0.05, 0.22, f.rain) * (0.3 + 0.5 * Math.min(1, f.rain));
-        var fa = smoothstep(0.15, 0.6, f.fog) * 0.42 * (1 - ra);
-        var c = rampColor(Math.max(f.rain, RAIN_STEPS[0])), a = ra + fa;
+        var ra = smoothstep(0.05, 0.22, f.rain) * (0.08 + 0.22 * Math.min(1, f.rain)), edge = 0;
+        for (var s = 0; s < RAIN_STEPS.length; s++) edge = Math.max(edge, 1 - Math.abs(f.rain - RAIN_STEPS[s]) / 0.018);
+        if (edge > 0) ra = Math.max(ra, 0.5 * edge);
+        var fa = smoothstep(0.15, 0.6, f.fog) * 0.16 * (1 - ra);
+        var c = rampColor(Math.max(f.rain, RAIN_STEPS[0])), a = (ra + fa) * state.opacity;
         if (a < 0.01) { d[k + 3] = 0; continue; }
-        d[k] = (c[0] * ra + 176 * fa) / a; d[k + 1] = (c[1] * ra + 176 * fa) / a; d[k + 2] = (c[2] * ra + 166 * fa) / a;
+        d[k] = (c[0] * ra + 176 * fa) / (ra + fa); d[k + 1] = (c[1] * ra + 176 * fa) / (ra + fa); d[k + 2] = (c[2] * ra + 166 * fa) / (ra + fa);
         d[k + 3] = Math.min(1, a) * 255;
       }
     }
@@ -761,7 +782,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       // weather, not a pixel grid, whatever the display size.
       rctx.imageSmoothingEnabled = true;
       rctx.imageSmoothingQuality = "high";
-      rctx.filter = "blur(" + (3 * radar.width / W).toFixed(1) + "px)";
+      rctx.filter = "blur(" + (1.6 * radar.width / W).toFixed(1) + "px)";
       rctx.drawImage(buf, 0, 0, radar.width, radar.height);
       rctx.filter = "none";
     }
@@ -770,6 +791,36 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       ? hhmm(rt.t) + (state.scrub > 0 ? "  +" + Math.floor(rt.minute) + " min" : "") + (rt.end ? " · raid end" : "")
       : "";
     requestAnimationFrame(frame);
+  }
+
+  // ---- TushonkaTerritories' faction map --------------------------------------------
+  // Territories draws a Voronoi map under the location buttons: each location's cell in its holding
+  // faction's colour (TerritoryRenderer, placed as the first child of Content/Map/Image). The colours are
+  // from its data.json; who holds what here is only an example. The radar sits above it, translucent.
+  var FACTIONS = { scav: "#055e1e", raider: "#FA8014", rogue: "#4F7061", ruaf: "#011e09", untar: "#5b92e5", cultist: "#7D04D6", blackdiv: "#000000" };
+  var HOLDERS = { "Customs": "scav", "Factory": "scav", "Interchange": "raider", "The Lab": "raider", "Labyrinth": "cultist", "Lighthouse": "rogue",
+    "Reserve": "ruaf", "Ground Zero": "untar", "Shoreline": "scav", "Streets of Tarkov": "blackdiv", "Woods": "rogue" };
+  function hexRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  function paintTerritory() {
+    var c = el("territory"), dpr = window.devicePixelRatio || 1, tw = 300, th = 200;
+    c.width = Math.max(1, Math.round((c.clientWidth || W) * dpr));
+    c.height = Math.max(1, Math.round((c.clientHeight || H) * dpr));
+    var tb = document.createElement("canvas"); tb.width = tw; tb.height = th;
+    var tctx = tb.getContext("2d"), im = tctx.createImageData(tw, th), d = im.data;
+    var pts = MAPS.filter(function (m) { return HOLDERS[m.name]; }).map(function (m) { return { x: m.x, y: m.y, c: hexRgb(FACTIONS[HOLDERS[m.name]]) }; });
+    for (var j = 0; j < th; j++) {
+      for (var i = 0; i < tw; i++) {
+        var x = (i + 0.5) * W / tw, y = (j + 0.5) * H / th, best = null, bd = Infinity;
+        pts.forEach(function (p) { var dd = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y); if (dd < bd) { bd = dd; best = p; } });
+        var k = (j * tw + i) * 4;
+        d[k] = best.c[0]; d[k + 1] = best.c[1]; d[k + 2] = best.c[2]; d[k + 3] = 0.4 * 255;
+      }
+    }
+    tctx.putImageData(im, 0, 0);
+    var ctx = c.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(tb, 0, 0, c.width, c.height);
   }
 
   // ---- controls -----------------------------------------------------------
@@ -836,6 +887,18 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     el("radarPlay").textContent = "Pause";
     if (!state.radarOn) el("radarToggle").click();
   });
+  el("opacity").addEventListener("input", function (e) {
+    state.opacity = Number(e.target.value) / 100;
+    el("opacityLabel").textContent = e.target.value + "% (F12 setting in the mod)";
+    radarDirty = true;
+  });
+  el("opacityLabel").textContent = "100% (F12 setting in the mod)";
+  el("territories").addEventListener("change", function (e) {
+    state.territories = e.target.checked;
+    el("territory").hidden = !state.territories;
+    if (state.territories) paintTerritory();
+  });
+  window.addEventListener("resize", function () { if (state.territories) paintTerritory(); radarDirty = true; });
   el("radarScrub").addEventListener("input", function (e) {
     state.scrub = Number(e.target.value) / 1000;
     stopPlay();
