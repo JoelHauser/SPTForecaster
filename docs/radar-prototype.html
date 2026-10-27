@@ -221,15 +221,10 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="rgba(199,197,180,.05)" stroke-width="1"/></pattern>
           </defs>
-          <rect width="600" height="400" fill="var(--sea)"/>
-          <path d="M120 0H600V400H262C232 372 204 384 172 362C142 342 112 352 92 322C72 292 42 282 52 242C62 202 32 172 62 140C82 110 72 62 102 40Z" fill="var(--land)" stroke="#2a2d25" stroke-width="1.5"/>
+          <!-- Stand-in for the game's map art. Only the marker positions are real. -->
+          <rect width="600" height="400" fill="var(--land)"/>
           <rect width="600" height="400" fill="url(#grid)"/>
-          <g fill="none" stroke="var(--road)" stroke-width="2" stroke-dasharray="6 5">
-            <path d="M95 86L175 150L300 200L480 230"/>
-            <path d="M275 135L300 200L330 300"/>
-            <path d="M430 95L520 160L480 230L470 290"/>
-            <path d="M140 290L300 200L380 250"/>
-          </g>
+          <text x="300" y="392" text-anchor="middle" fill="rgba(199,197,180,.18)" font-size="11" letter-spacing="2" font-family="Rajdhani, sans-serif">GAME MAP ART GOES HERE · MARKERS AT THE GAME'S OWN POSITIONS</text>
         </svg>
         <canvas id="radar" width="600" height="400" aria-hidden="true"></canvas>
         <div id="locs"></div>
@@ -331,22 +326,26 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 (function () {
   "use strict";
 
-  // ---- data from SPT_Data (x, y place the marker on the schematic, 600 x 400) ----
+  // ---- data from SPT_Data ----
+  // ix, iy are each location's IconX / IconY from base.json. The game anchors its map buttons at
+  // (IconX / 1000, IconY / 1000) of the map container, with y measured from the bottom, so these are the
+  // real positions; at() turns them into the 600 x 400 view used here.
+  function at(m) { m.x = m.ix * 0.6; m.y = (1000 - m.iy) * 0.4; return m; }
   var MAPS = [
-    { name: "Customs", raid: 40, typical: 25, level: 20, x: 300, y: 200 },
-    { name: "Factory", raid: 20, typical: 15, level: 1, indoor: true, x: 275, y: 135, flip: true },
-    { name: "Interchange", raid: 40, typical: 35, level: 25, x: 330, y: 300 },
-    { name: "The Lab", raid: 35, typical: 30, level: 45, indoor: true, x: 470, y: 290 },
-    { name: "Labyrinth", raid: 40, typical: 25, level: 15, indoor: true, x: 380, y: 250 },
-    { name: "Lighthouse", raid: 40, typical: 30, level: 35, x: 95, y: 86 },
-    { name: "Reserve", raid: 40, typical: 27, level: 35, x: 430, y: 95 },
-    { name: "Ground Zero", raid: 35, typical: 35, level: 20, x: 520, y: 160, flip: true },
-    { name: "Shoreline", raid: 45, typical: 35, level: 25, x: 140, y: 290 },
-    { name: "Streets of Tarkov", raid: 50, typical: 50, level: 40, x: 480, y: 230, flip: true },
-    { name: "Woods", raid: 40, typical: 25, level: 15, x: 175, y: 150 },
+    { name: "Customs", raid: 40, typical: 25, level: 20, ix: 550, iy: 460 },
+    { name: "Factory", raid: 20, typical: 15, level: 1, indoor: true, ix: 470, iy: 510, flip: true },
+    { name: "Interchange", raid: 40, typical: 35, level: 25, ix: 660, iy: 360 },
+    { name: "The Lab", raid: 35, typical: 30, level: 45, indoor: true, ix: 700, iy: 800 },
+    { name: "Labyrinth", raid: 40, typical: 25, level: 15, indoor: true, ix: 245, iy: 325 },
+    { name: "Lighthouse", raid: 40, typical: 30, level: 35, ix: 120, iy: 450 },
+    { name: "Reserve", raid: 40, typical: 27, level: 35, ix: 360, iy: 410 },
+    { name: "Ground Zero", raid: 35, typical: 35, level: 20, ix: 760, iy: 735 },
+    { name: "Shoreline", raid: 45, typical: 35, level: 25, ix: 220, iy: 300, flip: true },
+    { name: "Streets of Tarkov", raid: 50, typical: 50, level: 40, ix: 670, iy: 620 },
+    { name: "Woods", raid: 40, typical: 25, level: 15, ix: 460, iy: 660 },
     // Manimal-Icebreaker's db/base.json. It always plays at its pinned hour, so it gets one slot and no forecast.
-    { name: "Icebreaker", raid: 50, typical: 50, level: 60, indoor: true, oneSlot: true, x: 70, y: 372 }
-  ];
+    { name: "Icebreaker", raid: 50, typical: 50, level: 60, indoor: true, oneSlot: true, ix: 91, iy: 747 }
+  ].map(at);
   var FOG = { "0.0013": 35, "0.0018": 6, "0.002": 4, "0.004": 3, "0.006": 1 };
   var WIND = { "0": 6, "1": 3, "2": 2, "3": 1, "4": 1 };
   var PRESETS = {
@@ -679,15 +678,16 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   // ---- radar ------------------------------------------------------------------
   // Draws the same field the locations sample, at the radar's time: the selected slot's start, or
-  // sweeping through that slot's raid when "Play raid" is on.
-  var PLAY_SECONDS = 8, GW = 150, GH = 100;
+  // playing through that slot's raid when "Play raid" is on.
+  var PLAY_SECONDS = 8, GW = 240, GH = 160;
   var radar = el("radar"), rctx = radar.getContext("2d");
   var buf = document.createElement("canvas"); buf.width = GW; buf.height = GH;
   var bctx = buf.getContext("2d"), img = bctx.createImageData(GW, GH);
-  var radarDirty = true, lastRadarT = null, lastPaint = 0, reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var radarDirty = true, lastRadarT = null, lastPaint = 0;
 
   var RAIN_RAMP = [[64, 168, 84], [214, 196, 62], [230, 130, 44], [206, 54, 44]];
   var SNOW_RAMP = [[120, 168, 226], [168, 200, 244], [214, 232, 255], [250, 252, 255]];
+  function smoothstep(a, b, v) { var x = Math.min(1, Math.max(0, (v - a) / (b - a))); return x * x * (3 - 2 * x); }
   function rampColor(v) {
     var ramp = state.winter ? SNOW_RAMP : RAIN_RAMP, x = Math.min(0.999, Math.max(0, (v - RAIN_STEPS[0]) / (0.9 - RAIN_STEPS[0]))) * (ramp.length - 1);
     var i = Math.floor(x), f = x - i, a = ramp[i], b = ramp[Math.min(ramp.length - 1, i + 1)];
@@ -711,15 +711,15 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var cells = activeCells(t), d = img.data;
     for (var j = 0; j < GH; j++) {
       for (var i = 0; i < GW; i++) {
+        // Colour and opacity both follow the field continuously, so cells fade in at their edges
+        // instead of stepping on at a threshold. Fog sits under rain and shows where rain is light.
         var f = fieldAt(cells, (i + 0.5) * W / GW, (j + 0.5) * H / GH, t), k = (j * GW + i) * 4;
-        if (f.rain >= RAIN_STEPS[0]) {
-          var c = rampColor(f.rain);
-          d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = (0.38 + 0.42 * Math.min(1, f.rain)) * 255;
-        } else if (f.fog >= 0.25) {
-          d[k] = 176; d[k + 1] = 176; d[k + 2] = 166; d[k + 3] = (0.1 + 0.4 * f.fog) * 255;
-        } else {
-          d[k + 3] = 0;
-        }
+        var ra = smoothstep(0.05, 0.22, f.rain) * (0.3 + 0.5 * Math.min(1, f.rain));
+        var fa = smoothstep(0.15, 0.6, f.fog) * 0.42 * (1 - ra);
+        var c = rampColor(Math.max(f.rain, RAIN_STEPS[0])), a = ra + fa;
+        if (a < 0.01) { d[k + 3] = 0; continue; }
+        d[k] = (c[0] * ra + 176 * fa) / a; d[k + 1] = (c[1] * ra + 176 * fa) / a; d[k + 2] = (c[2] * ra + 166 * fa) / a;
+        d[k + 3] = Math.min(1, a) * 255;
       }
     }
     bctx.putImageData(img, 0, 0);
@@ -732,16 +732,12 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     }
     rctx.clearRect(0, 0, W, H);
     if (state.radarOn) {
+      // Upscaled with smoothing and a light blur, so the field reads as soft weather, not a pixel grid.
       rctx.imageSmoothingEnabled = true;
+      rctx.imageSmoothingQuality = "high";
+      rctx.filter = "blur(3px)";
       rctx.drawImage(buf, 0, 0, W, H);
-      if (!reduceMotion) {
-        // A slow sweep from the region's middle, for the radar-screen look.
-        var a = (now / 4000) % 1 * Math.PI * 2, cx = W / 2, cy = H / 2, r = Math.hypot(W, H) / 2;
-        var g = rctx.createLinearGradient(cx, cy, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-        g.addColorStop(0, "rgba(199,197,180,0)"); g.addColorStop(1, "rgba(199,197,180,.22)");
-        rctx.strokeStyle = g; rctx.lineWidth = 1.5;
-        rctx.beginPath(); rctx.moveTo(cx, cy); rctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); rctx.stroke();
-      }
+      rctx.filter = "none";
     }
     el("radarTime").textContent = state.radarOn ? hhmm(rt.t) + (state.playing ? "  +" + Math.floor(rt.minute) + " min" : "") : "";
     requestAnimationFrame(frame);
