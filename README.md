@@ -8,20 +8,28 @@ Preview: open [docs/forecast-preview.html](docs/forecast-preview.html) in a brow
 
 ## What it shows
 
+The forecast is built into the game's own time toggles, so it reads as part of the location screen rather than an overlay:
+
 ```
-            CUSTOMS
- ┌──────────────────────┐  ┌──────────────────────┐
- │ FORECAST             │  │ FORECAST             │
- │ ☁ Overcast           │  │ ☀ Clear all raid     │
- │ ☂ Rain from ~15 min  │  │ ≈ Breezy             │
- │ ☀ Clearing by ~35 min│  │                      │
- ├──────────────────────┤  ├──────────────────────┤
- │        14:32         │  │        02:32         │
- │         DAY          │  │        NIGHT         │
- └──────────────────────┘  └──────────────────────┘
+ LOCATION
+ CUSTOMS
+ Raid time 40 min · Typical raid ~25 min · Average level 20
+
+ TIME AND WEATHER
+ ┌───────────────────────┐  ┌───────────────────────┐
+ │ 14:32:07              │  │ 02:32:07              │
+ │ ☀ DAY                 │  │ ☾ NIGHT               │
+ │ ───────────────────── │  │ ───────────────────── │
+ │ ☁ Overcast            │  │ ☾ Clear all raid      │
+ │ ☂ Rain from ~15 min   │  │ ≈ Breezy              │
+ │ ☀ Clearing by ~35 min │  │                       │
+ └───────────────────────┘  └───────────────────────┘
+ Forecast for the whole raid. Weather is set when you press Next.
 ```
 
-- A headline condition, then up to two changes with the raid minute they happen at.
+- The clock ticks like the game's own; the selected toggle inverts (light fill, dark text) as the game's toggles do.
+- A headline condition, then up to two changes with the raid minute they happen at. A change in the first couple of minutes reads "within minutes".
+- Fog under rain or snow is named too ("Rain and dense fog").
 - If more changes follow than fit, a last line says "More changes after ~X min". The card only says "all raid" when the weather really doesn't change.
 - A glyph for every condition: clear, partly cloudy (each with a night moon version), overcast, stormy skies, light/normal/heavy rain, light/normal/heavy snow, fog, dense fog, calm, breezy, strong wind.
 - No temperatures.

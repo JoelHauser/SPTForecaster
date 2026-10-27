@@ -7,20 +7,26 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: one column. Controls, then a simulated map selection screen with a forecast above each time slot, then the Tarkov-time schedule both forecasts are written from. Single dark look, like the game's menus. */
+/* Layout: the game screen first (schematic map left, location panel right, forecast built into the time toggles),
+   then the simulation controls and the schedule the cards are written from. One dark look, matching the game's menus. */
 :root {
   color-scheme: dark;
-  --bg: #0d0e0b;
-  --panel: #161813;
-  --panel-2: #1d201a;
-  --line: #2c3027;
-  --fg: #dcd9cc;
-  --muted: #8f8c7f;
-  --accent: #c6b07a;
-  --accent-ink: #15130c;
-  --night: #7f93b8;
+  --bg: #0b0c0b;
+  --screen: #101110;
+  --panel: rgba(12, 13, 12, .86);
+  --panel-solid: #151614;
+  --line: #34362f;
+  --line-soft: #24261f;
+  --fg: #c7c5b4;
+  --fg-hi: #ecebe0;
+  --muted: #84826f;
+  --sel-bg: #c7c5b4;
+  --sel-fg: #0d0e0c;
+  --sea: #0d1314;
+  --land: #171914;
+  --road: #2f322a;
   --sky-clear: #d4b25c;
   --sky-partly: #9ba493;
   --sky-overcast: #67737a;
@@ -31,7 +37,7 @@
   --snow: #c9d3dc;
   --ok: #9fbf7a;
   --miss: #d0704f;
-  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-game: "Rajdhani", "Bahnschrift", "Segoe UI", system-ui, sans-serif;
   --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
   --font-data: "JetBrains Mono", ui-monospace, Consolas, monospace;
 }
@@ -41,131 +47,148 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 28px 48px;
 }
-main { max-width: 1040px; margin: 0 auto; display: grid; gap: 28px; }
-h1, h2 { font-family: var(--font-display); font-weight: 600; letter-spacing: .02em; margin: 0; text-wrap: balance; }
-h1 { font-size: 28px; }
-h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+main { max-width: 1120px; margin: 0 auto; display: grid; gap: 32px; }
+h1, h2, h3 { font-family: var(--font-game); font-weight: 700; margin: 0; text-wrap: balance; }
+h1 { font-size: 30px; letter-spacing: .04em; color: var(--fg-hi); }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
 p { margin: 0; }
-.lede { color: var(--muted); max-width: 70ch; margin-top: 6px; }
+.lede { color: var(--muted); max-width: 72ch; margin-top: 6px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--fg-hi); outline-offset: 2px; }
 
-/* controls */
-.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 18px; padding: 16px; background: var(--panel); border: 1px solid var(--line); }
+/* ---------- the game screen ---------- */
+.eft { border: 1px solid var(--line); background: var(--screen); font-family: var(--font-game); }
+.eft-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line-soft); background: #0c0d0c; flex-wrap: wrap; }
+.eft-title { font-size: 20px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-hi); }
+.eft-steps { display: flex; gap: 6px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.eft-steps span { padding: 2px 8px; border: 1px solid var(--line-soft); }
+.eft-steps span.on { color: var(--sel-fg); background: var(--sel-bg); border-color: var(--sel-bg); }
+.eft-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); min-height: 470px; }
+
+.map { position: relative; overflow: hidden; border-right: 1px solid var(--line-soft); background: var(--sea); min-height: 320px; }
+/* markers are placed in % of this 3:2 frame, so the frame keeps the drawing's ratio whatever the column's height */
+.map-inner { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); aspect-ratio: 3 / 2; }
+.map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+[hidden] { display: none !important; }
+.map-note { position: absolute; left: 12px; bottom: 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(199,197,180,.35); }
+.loc { position: absolute; transform: translate(-7px, -7px); display: flex; align-items: center; gap: 7px; background: none; border: 0; padding: 0; white-space: nowrap; }
+.loc i { width: 14px; height: 14px; border: 1.5px solid var(--fg); background: var(--screen); transform: rotate(45deg); flex: none; transition: background .15s, border-color .15s; }
+.loc b { font-weight: 600; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg); text-shadow: 0 1px 2px #000; padding: 1px 5px; transition: background .15s, color .15s; }
+.loc:hover b { color: var(--fg-hi); }
+.loc:hover i { border-color: var(--fg-hi); }
+.loc[aria-pressed="true"] i { background: var(--sel-bg); border-color: var(--sel-bg); box-shadow: 0 0 0 4px rgba(199,197,180,.18); }
+.loc[aria-pressed="true"] b { background: var(--sel-bg); color: var(--sel-fg); text-shadow: none; }
+.loc.flip { flex-direction: row-reverse; transform: translate(calc(-100% + 7px), -7px); }
+
+.side { display: grid; grid-template-rows: auto auto 1fr auto; background: var(--panel); min-width: 0; }
+.side-block { padding: 16px 18px; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.loc-name { font-size: clamp(26px, 3.4vw, 34px); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-hi); line-height: 1.05; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; font-size: 15px; font-weight: 500; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; color: var(--fg); font-variant-numeric: tabular-nums; }
+
+.slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.slots.one { grid-template-columns: minmax(0, 1fr); }
+.slot { display: grid; align-content: start; gap: 6px; text-align: left; padding: 12px 12px 14px; min-width: 0; background: rgba(0,0,0,.35); border: 1px solid var(--line); color: var(--fg); transition: background .15s, border-color .15s, color .15s; }
+.slot:hover { border-color: var(--fg); }
+.slot[aria-pressed="true"] { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-fg); }
+.slot-time { font-size: 30px; font-weight: 700; letter-spacing: .03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.slot-phase { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; opacity: .75; }
+.slot-rule { height: 1px; background: currentColor; opacity: .25; margin: 4px 0 2px; }
+.fc-main { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; letter-spacing: .02em; line-height: 1.15; }
+.fc-line { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; line-height: 1.2; opacity: .85; }
+.fc-main .gl { width: 24px; height: 24px; }
+.fc-line .gl, .slot-phase .gl { width: 16px; height: 16px; }
+.fc-line.more { opacity: .6; font-weight: 500; }
+.slot-hint { font-size: 13px; font-weight: 500; color: var(--muted); }
+
+.side-actions { display: flex; justify-content: space-between; gap: 10px; padding: 14px 18px; }
+.eft-btn { min-width: 110px; padding: 9px 18px; font-family: var(--font-game); font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--fg); }
+.eft-btn:hover { border-color: var(--fg); color: var(--fg-hi); }
+.eft-btn.primary { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
+.eft-btn.primary:hover { background: var(--fg-hi); }
+
+/* glyphs: stroked in currentColor; --gbg is the surface behind them, used to mask a sun or moon behind a cloud */
+.gl { width: 1.15em; height: 1.15em; flex: none; display: inline-block; vertical-align: -.2em; }
+.slot { --gbg: #0d0e0d; }
+.slot[aria-pressed="true"] { --gbg: var(--sel-bg); }
+
+/* ---------- simulation ---------- */
+.sim { display: grid; gap: 14px; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; padding: 16px; background: var(--panel-solid); border: 1px solid var(--line-soft); }
 .field { display: grid; gap: 6px; min-width: 0; align-content: start; }
-.field > span { font-family: var(--font-display); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
-button { font: inherit; color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); border-radius: 2px; padding: 7px 10px; cursor: pointer; }
-button:hover { border-color: var(--accent); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-input[type=range] { width: 100%; accent-color: var(--accent); }
+.field > span { font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+.ctl { background: #1b1c19; border: 1px solid var(--line); border-radius: 0; padding: 7px 10px; }
+.ctl:hover { border-color: var(--fg); }
+input[type=range] { width: 100%; accent-color: var(--fg); }
 .mono { font-family: var(--font-data); font-size: 13px; }
 .seg { display: flex; }
-.seg button { flex: 1; border-radius: 0; }
+.seg button { flex: 1; }
 .seg button + button { border-left: 0; }
-.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); font-weight: 600; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
-.check input { margin-top: 4px; accent-color: var(--accent); }
+.check input { margin-top: 4px; accent-color: var(--fg); }
 .status { grid-column: 1 / -1; font-size: 14px; color: var(--muted); min-height: 1.5em; }
 .status b { color: var(--fg); font-weight: 600; }
-
-/* map selection screen */
-.screen { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; border: 1px solid var(--line); background: #10120e; min-height: 440px; }
-.maplist { border-right: 1px solid var(--line); padding: 10px 0; display: grid; align-content: start; }
-.maplist button { text-align: left; background: none; border: 0; border-left: 3px solid transparent; border-radius: 0; padding: 7px 14px; font-family: var(--font-display); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; color: var(--muted); }
-.maplist button:hover { color: var(--fg); }
-.maplist button[aria-pressed="true"] { color: var(--fg); border-left-color: var(--accent); background: var(--panel-2); }
-.stage { position: relative; overflow: hidden; padding: 22px 24px; display: grid; grid-template-rows: auto 1fr auto; gap: 18px; min-width: 0; }
-.stage::before { content: ""; position: absolute; inset: 0; background:
-  radial-gradient(90% 70% at 75% 0%, rgba(198,176,122,.13), transparent 60%),
-  linear-gradient(180deg, #1f231c, #10120e 70%); z-index: 0; }
-.stage > * { position: relative; z-index: 1; }
-.loc-name { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 4vw, 40px); letter-spacing: .05em; text-transform: uppercase; line-height: 1.1; }
-.loc-meta { font-family: var(--font-display); font-size: 14px; color: var(--muted); margin-top: 4px; }
-.tarkov-clock { font-family: var(--font-data); font-size: 12px; color: var(--muted); margin-top: 2px; }
-.slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-self: end; max-width: 620px; width: 100%; justify-self: center; }
-.slot { display: grid; gap: 8px; min-width: 0; }
-.fc { background: rgba(13,14,11,.88); border: 1px solid var(--line); padding: 10px 12px; min-height: 96px; display: grid; align-content: start; gap: 2px; }
-.fc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
-.fc-main { font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.25; display: flex; align-items: center; gap: 8px; }
-.fc-line { font-family: var(--font-display); font-weight: 500; font-size: 14px; color: #cfccbf; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
-.fc-main .gl { width: 26px; height: 26px; }
-.fc-line .gl { width: 18px; height: 18px; }
-
-/* glyphs: drawn with currentColor; --gbg is the surface behind them, used to mask a sun or moon behind a cloud */
-.gl { width: 1.15em; height: 1.15em; flex: none; display: inline-block; vertical-align: -.2em; }
-.fc { --gbg: #111210; }
-.fc .g-clear, .fc .g-partly { color: var(--sky-clear); }
-.fc .g-night.g-clear, .fc .g-night.g-partly { color: var(--night); }
-.fc .g-overcast, .fc .g-storm { color: #b9bfbf; }
-.fc .g-lightrain, .fc .g-rain, .fc .g-heavy { color: #8fb6d8; }
-.fc .g-fog, .fc .g-densefog { color: var(--fog); }
-.fc .g-lightsnow, .fc .g-snow, .fc .g-heavysnow { color: #e2eaf1; }
-.slots.one { grid-template-columns: minmax(0, 300px); justify-content: center; }
 .verdicts { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
 .verdicts .ok { color: var(--ok); font-weight: 600; }
 .verdicts .bad { color: var(--miss); font-weight: 600; }
-.fc .g-calm, .fc .g-breezy, .fc .g-wind { color: var(--muted); }
-.glyph-key { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; font-size: 13px; color: var(--muted); --gbg: var(--bg); }
-.glyph-key span { display: flex; align-items: center; gap: 8px; }
-.glyph-key .gl { width: 22px; height: 22px; color: var(--fg); }
-.slot-btn { display: grid; justify-items: center; gap: 0; padding: 12px 10px; background: var(--panel); border: 1px solid var(--line); font-family: var(--font-display); }
-.slot-btn .t { font-size: 26px; font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
-.slot-btn .d { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; color: var(--muted); }
-.slot-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--panel-2); box-shadow: inset 0 -3px 0 var(--accent); }
-.slot.is-night .slot-btn .d { color: var(--night); }
-.slot.selected .fc { border-color: var(--accent); }
-.screen-note { font-size: 13px; color: var(--muted); }
 
-/* timeline */
+.section { display: grid; gap: 12px; }
+.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section-head p, .note { color: var(--muted); font-size: 14px; }
+
 .timeline-wrap { overflow-x: auto; }
 .timeline { min-width: 560px; display: grid; gap: 10px; }
 .tl-row { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: center; }
-.tl-label { font-family: var(--font-display); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); line-height: 1.3; }
+.tl-label { font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); line-height: 1.3; }
 .tl-label b { display: block; color: var(--fg); font-family: var(--font-data); font-weight: 500; letter-spacing: 0; font-size: 13px; }
 .track { height: 40px; display: flex; border: 1px solid var(--line); }
 .blk { height: 100%; border-right: 1px solid rgba(0,0,0,.45); overflow: hidden; padding: 4px 7px; font-size: 12px; line-height: 1.2; color: #0f110d; font-weight: 600; min-width: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
 .blk .gl { width: 18px; height: 18px; }
 .c-clear { background: var(--sky-clear); --gbg: var(--sky-clear); }
 .c-partly { background: var(--sky-partly); --gbg: var(--sky-partly); }
-.c-overcast { background: var(--sky-overcast); --gbg: var(--sky-overcast); color: var(--fg); }
-.c-storm { background: var(--sky-storm); --gbg: var(--sky-storm); color: var(--fg); }
-.c-rain { background: var(--rain); --gbg: var(--rain); color: var(--fg); background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.10) 0 2px, transparent 2px 9px); }
-.c-heavy { background: var(--rain-heavy); --gbg: var(--rain-heavy); color: var(--fg); background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.16) 0 2px, transparent 2px 6px); }
+.c-overcast { background: var(--sky-overcast); --gbg: var(--sky-overcast); color: var(--fg-hi); }
+.c-storm { background: var(--sky-storm); --gbg: var(--sky-storm); color: var(--fg-hi); }
+.c-rain { background: var(--rain); --gbg: var(--rain); color: var(--fg-hi); background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.10) 0 2px, transparent 2px 9px); }
+.c-heavy { background: var(--rain-heavy); --gbg: var(--rain-heavy); color: var(--fg-hi); background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.16) 0 2px, transparent 2px 6px); }
 .c-fog { background: var(--fog); --gbg: var(--fog); background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.18) 0 3px, transparent 3px 8px); }
 .c-snow { background: var(--snow); --gbg: var(--snow); background-image: radial-gradient(rgba(255,255,255,.7) 1px, transparent 1.5px); background-size: 7px 7px; }
-td .gl { width: 18px; height: 18px; margin-right: 6px; --gbg: var(--bg); }
-tr.hit td .gl { --gbg: var(--panel-2); }
 .ticks { position: relative; height: 18px; font-family: var(--font-data); font-size: 11px; color: var(--muted); margin-left: 102px; }
 .ticks span { position: absolute; top: 0; transform: translateX(-50%); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
 .legend i { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; margin-right: 6px; }
 
-/* table */
-.table-wrap { overflow-x: auto; border: 1px solid var(--line); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line-soft); }
 table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 700px; }
-th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-th { font-family: var(--font-display); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); background: var(--panel); }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+th { font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); background: var(--panel-solid); }
 td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
-tr.hit td { background: var(--panel-2); }
-.pill { display: inline-block; font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 1px 6px; border: 1px solid var(--line); margin-right: 4px; }
-.pill.a { border-color: var(--accent); color: var(--accent); }
-.pill.b { border-color: var(--night); color: var(--night); }
-.section { display: grid; gap: 12px; }
-.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.section-head p { color: var(--muted); font-size: 14px; }
+td .gl { width: 18px; height: 18px; margin-right: 6px; --gbg: var(--bg); }
+tr.hit td { background: #151612; }
+tr.hit td .gl { --gbg: #151612; }
+.pill { display: inline-block; font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 6px; border: 1px solid var(--line); margin-right: 4px; }
+
+.glyph-key { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px 16px; font-size: 14px; color: var(--muted); --gbg: var(--bg); }
+.glyph-key span { display: flex; align-items: center; gap: 10px; }
+.glyph-key .gl { width: 24px; height: 24px; color: var(--fg); }
+
 .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; font-size: 14px; color: var(--muted); }
-.notes h3 { font-family: var(--font-display); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--fg); margin: 0 0 6px; }
+.notes h3 { font-size: 14px; text-transform: uppercase; letter-spacing: .12em; color: var(--fg); margin-bottom: 6px; }
 .notes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
-@media (max-width: 640px) {
-  .screen { grid-template-columns: 1fr; }
-  .maplist { border-right: 0; border-bottom: 1px solid var(--line); display: flex; overflow-x: auto; padding: 0; }
-  .maplist button { border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; }
-  .maplist button[aria-pressed="true"] { border-bottom-color: var(--accent); }
-  .stage { padding: 16px; }
-  .slots { gap: 8px; }
-  .fc-main { font-size: 15px; }
-  .fc-line { font-size: 13px; }
+@media (max-width: 760px) {
+  .eft-body { grid-template-columns: 1fr; }
+  .map { border-right: 0; border-bottom: 1px solid var(--line-soft); aspect-ratio: 3 / 2; min-height: 0; }
+  .loc b { font-size: 11px; }
+  .eft-steps { display: none; }
 }
+@media (max-width: 420px) {
+  .slots { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
 </head>
@@ -173,46 +196,82 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 <main>
   <header>
     <h1>SPTForecaster</h1>
-    <p class="lede">A forecast above each time slot on the map selection screen. In this version weather follows Tarkov's in-game clock, so the slot 12 hours ahead gets the weather due 12 in-game hours later.</p>
+    <p class="lede">A weather forecast built into the time toggles on the location screen. Weather follows the in-game clock, so the slot 12 hours ahead gets the weather due 12 in-game hours later.</p>
   </header>
 
-  <section class="controls" aria-label="Preview settings">
-    <label class="field"><span>Look ahead in real time</span>
-      <input id="ahead" type="range" min="0" max="240" step="5" value="0">
-      <span class="mono" id="aheadLabel"></span>
-    </label>
-    <div class="field"><span>Season</span>
-      <div class="seg" role="group" aria-label="Season">
-        <button id="seaSummer" type="button" aria-pressed="true">Summer</button>
-        <button id="seaWinter" type="button" aria-pressed="false">Winter</button>
+  <section class="eft" aria-label="Location selection screen">
+    <div class="eft-top">
+      <div class="eft-title">Select location</div>
+      <div class="eft-steps" aria-hidden="true"><span>Character</span><span class="on">Location</span><span>Insurance</span><span>Ready</span></div>
+    </div>
+    <div class="eft-body">
+      <div class="map" id="map">
+        <div class="map-inner">
+        <svg viewBox="0 0 600 400" aria-hidden="true">
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="rgba(199,197,180,.05)" stroke-width="1"/></pattern>
+          </defs>
+          <rect width="600" height="400" fill="var(--sea)"/>
+          <path d="M120 0H600V400H262C232 372 204 384 172 362C142 342 112 352 92 322C72 292 42 282 52 242C62 202 32 172 62 140C82 110 72 62 102 40Z" fill="var(--land)" stroke="#2a2d25" stroke-width="1.5"/>
+          <rect width="600" height="400" fill="url(#grid)"/>
+          <g fill="none" stroke="var(--road)" stroke-width="2" stroke-dasharray="6 5">
+            <path d="M95 86L175 150L300 200L480 230"/>
+            <path d="M275 135L300 200L330 300"/>
+            <path d="M430 95L520 160L480 230L470 290"/>
+            <path d="M140 290L300 200L380 250"/>
+          </g>
+        </svg>
+        <div id="locs"></div>
+        </div>
+        <div class="map-note">Schematic</div>
       </div>
-    </div>
-    <div class="field"><span>Loading time</span>
-      <input id="load" type="range" min="0" max="5" step="0.5" value="2">
-      <span class="mono" id="loadLabel"></span>
-      <label class="check"><input id="lock" type="checkbox" checked> Lock the raid's weather when the slot is confirmed</label>
-    </div>
-    <div class="field"><span>Server restart</span>
-      <button id="restart" type="button">Restart server</button>
-      <label class="check"><input id="persist" type="checkbox" checked> Keep the schedule across restarts</label>
-    </div>
-    <p class="status" id="status" role="status"></p>
-  </section>
-
-  <section class="section" aria-label="Map selection screen">
-    <div class="screen">
-      <nav class="maplist" id="maplist" aria-label="Maps"></nav>
-      <div class="stage">
-        <div>
+      <div class="side">
+        <div class="side-block">
+          <div class="label">Location</div>
           <div class="loc-name" id="locName"></div>
-          <div class="loc-meta" id="locMeta"></div>
-          <div class="tarkov-clock" id="tarkovClock"></div>
+          <dl class="facts" id="facts"></dl>
+        </div>
+        <div class="side-block">
+          <div class="label" id="slotsLabel">Time and weather</div>
+          <div class="slots" id="slots"></div>
+          <p class="slot-hint" id="slotHint"></p>
         </div>
         <div></div>
-        <div class="slots" id="slots"></div>
+        <div class="side-actions">
+          <button class="eft-btn" type="button" id="backBtn">Back</button>
+          <button class="eft-btn primary" type="button" id="nextBtn">Next</button>
+        </div>
       </div>
     </div>
-    <p class="screen-note">Layout is a stand-in for the game's map selection screen. Click a time slot to select it, as you would in game.</p>
+  </section>
+
+  <section class="sim" aria-labelledby="simHead">
+    <div class="section-head">
+      <h2 id="simHead">Simulation</h2>
+      <p>Controls for testing the cards. None of these exist in game.</p>
+    </div>
+    <div class="controls">
+      <label class="field"><span>Look ahead in real time</span>
+        <input id="ahead" type="range" min="0" max="240" step="5" value="0">
+        <span class="mono" id="aheadLabel"></span>
+      </label>
+      <div class="field"><span>Season</span>
+        <div class="seg" role="group" aria-label="Season">
+          <button class="ctl" id="seaSummer" type="button" aria-pressed="true">Summer</button>
+          <button class="ctl" id="seaWinter" type="button" aria-pressed="false">Winter</button>
+        </div>
+      </div>
+      <div class="field"><span>Loading time</span>
+        <input id="load" type="range" min="0" max="5" step="0.5" value="2">
+        <span class="mono" id="loadLabel"></span>
+        <label class="check"><input id="lock" type="checkbox" checked> Lock the raid's weather when the slot is confirmed</label>
+      </div>
+      <div class="field"><span>Server restart</span>
+        <button class="ctl" id="restart" type="button">Restart server</button>
+        <label class="check"><input id="persist" type="checkbox" checked> Keep the schedule across restarts</label>
+      </div>
+      <p class="status" id="status" role="status"></p>
+    </div>
     <div class="verdicts" id="verdicts" aria-live="polite"></div>
   </section>
 
@@ -224,12 +283,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     <div id="tlBox"></div>
   </section>
 
-  <section class="section" aria-labelledby="keyHead">
-    <h2 id="keyHead">Glyphs</h2>
-    <div class="glyph-key" id="glyphKey"></div>
-  </section>
-
-  <section class="section" aria-labelledby="tblHead">
+  <section class="section" aria-labelledby="tblHead" id="tblSection">
     <div class="section-head">
       <h2 id="tblHead">Schedule on the Tarkov clock</h2>
       <p>Each block lasts 105 or 210 in-game minutes (15 or 30 real).</p>
@@ -238,6 +292,11 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       <thead><tr><th>Tarkov time</th><th>Used by</th><th>Preset</th><th>Clouds</th><th>Rain</th><th>Fog</th><th>Wind</th><th>Reads as</th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
+  </section>
+
+  <section class="section" aria-labelledby="keyHead">
+    <h2 id="keyHead">Glyphs</h2>
+    <div class="glyph-key" id="glyphKey"></div>
   </section>
 
   <section class="notes" aria-label="About this preview">
@@ -254,9 +313,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       <h3>Proposed by the mod</h3>
       <ul>
         <li>Schedule keyed to the Tarkov clock instead of the real clock, so the two slots differ.</li>
-        <li>Saved to disk so a restart keeps it.</li>
-        <li>The chosen slot is passed to the server so the raid gets that slot's weather.</li>
-        <li>Screen layout and the cut-offs that turn numbers into words are guesses.</li>
+        <li>Saved to disk so a restart keeps it, and the raid's weather locked when the slot is confirmed.</li>
+        <li>No forecast on Factory, The Lab, Labyrinth or Icebreaker; Icebreaker shows one slot at 23:00.</li>
+        <li>The location map is a schematic, and the cut-offs that turn numbers into words are first guesses.</li>
       </ul>
     </div>
   </section>
@@ -266,21 +325,21 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 (function () {
   "use strict";
 
-  // ---- data from SPT_Data ------------------------------------------------
+  // ---- data from SPT_Data (x, y place the marker on the schematic, 600 x 400) ----
   var MAPS = [
-    { name: "Customs", raid: 40, typical: 25, level: 20 },
-    { name: "Factory", raid: 20, typical: 15, level: 1, indoor: true },
-    { name: "Interchange", raid: 40, typical: 35, level: 25 },
-    { name: "The Lab", raid: 35, typical: 30, level: 45, indoor: true },
-    { name: "Labyrinth", raid: 40, typical: 25, level: 15, indoor: true },
-    { name: "Lighthouse", raid: 40, typical: 30, level: 35 },
-    { name: "Reserve", raid: 40, typical: 27, level: 35 },
-    { name: "Ground Zero", raid: 35, typical: 35, level: 20 },
-    { name: "Shoreline", raid: 45, typical: 35, level: 25 },
-    { name: "Streets of Tarkov", raid: 50, typical: 50, level: 40 },
-    { name: "Woods", raid: 40, typical: 25, level: 15 },
-    // Manimal-Icebreaker's db/base.json. It always plays at night, so it gets one slot and no forecast.
-    { name: "Icebreaker", raid: 50, typical: 50, level: 60, indoor: true, oneSlot: true }
+    { name: "Customs", raid: 40, typical: 25, level: 20, x: 300, y: 200 },
+    { name: "Factory", raid: 20, typical: 15, level: 1, indoor: true, x: 275, y: 135, flip: true },
+    { name: "Interchange", raid: 40, typical: 35, level: 25, x: 330, y: 300 },
+    { name: "The Lab", raid: 35, typical: 30, level: 45, indoor: true, x: 470, y: 290 },
+    { name: "Labyrinth", raid: 40, typical: 25, level: 15, indoor: true, x: 380, y: 250 },
+    { name: "Lighthouse", raid: 40, typical: 30, level: 35, x: 95, y: 86 },
+    { name: "Reserve", raid: 40, typical: 27, level: 35, x: 430, y: 95 },
+    { name: "Ground Zero", raid: 35, typical: 35, level: 20, x: 520, y: 160, flip: true },
+    { name: "Shoreline", raid: 45, typical: 35, level: 25, x: 140, y: 290 },
+    { name: "Streets of Tarkov", raid: 50, typical: 50, level: 40, x: 480, y: 230, flip: true },
+    { name: "Woods", raid: 40, typical: 25, level: 15, x: 175, y: 150 },
+    // Manimal-Icebreaker's db/base.json. It always plays at its pinned hour, so it gets one slot and no forecast.
+    { name: "Icebreaker", raid: 50, typical: 50, level: 60, indoor: true, oneSlot: true, x: 70, y: 372 }
   ];
   var FOG = { "0.0013": 35, "0.0018": 6, "0.002": 4, "0.004": 3, "0.006": 1 };
   var WIND = { "0": 6, "1": 3, "2": 2, "3": 1, "4": 1 };
@@ -316,8 +375,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     }).join("");
   }
   function drops(pts) { return pts.map(function (p) { return "<line x1=\"" + p[0] + "\" y1=\"" + p[1] + "\" x2=\"" + (p[0] - 1.4) + "\" y2=\"" + (p[1] + 3.2) + "\"/>"; }).join(""); }
+  var MOON = "M19 14.8A7.5 7.5 0 1 1 9.2 5a6 6 0 0 0 9.8 9.8z";
   var GLYPHS = {
-    clear: function (night) { return night ? "<path d=\"M19 14.8A7.5 7.5 0 1 1 9.2 5a6 6 0 0 0 9.8 9.8z\"/>" : "<circle cx=\"12\" cy=\"12\" r=\"4.2\"/>" + rays(12, 12, 6.8, 9.4); },
+    clear: function (night) { return night ? "<path d=\"" + MOON + "\"/>" : "<circle cx=\"12\" cy=\"12\" r=\"4.2\"/>" + rays(12, 12, 6.8, 9.4); },
     partly: function (night) {
       return (night ? "<path d=\"M13.6 10.2A5.2 5.2 0 1 1 7.3 3.9a4.1 4.1 0 0 0 6.3 6.3z\"/>" : "<circle cx=\"8.5\" cy=\"8.5\" r=\"3\"/>" + rays(8.5, 8.5, 4.9, 6.7)) + cloud("translate(4.2 3.6) scale(.82)");
     },
@@ -333,7 +393,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     densefog: function () { return "<path d=\"M3 6.5h18M4 10.5h15M3 14.5h18M5 18.5h14\" stroke-width=\"2.2\"/>"; },
     calm: function () { return "<path d=\"M4 12h16\"/><circle cx=\"4\" cy=\"12\" r=\".6\"/><circle cx=\"20\" cy=\"12\" r=\".6\"/>"; },
     breezy: function () { return "<path d=\"M3 10h11a2.5 2.5 0 1 0-2.5-2.5M3 15h13a2.6 2.6 0 1 1-2.6 2.6\"/>"; },
-    wind: function () { return "<path d=\"M3 8h10a2.5 2.5 0 1 0-2.5-2.5M3 12h15a2.8 2.8 0 1 1-2.8 2.8M3 16h8\"/>"; }
+    wind: function () { return "<path d=\"M3 8h10a2.5 2.5 0 1 0-2.5-2.5M3 12h15a2.8 2.8 0 1 1-2.8 2.8M3 16h8\"/>"; },
+    sun: function () { return "<circle cx=\"12\" cy=\"12\" r=\"4.2\"/>" + rays(12, 12, 6.8, 9.4); },
+    moon: function () { return "<path d=\"" + MOON + "\"/>"; }
   };
   function glyph(key, night) {
     if (!key || !GLYPHS[key]) return "";
@@ -342,11 +404,11 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   // ---- Tarkov clock (WeatherHelper.GetInRaidTime, without the % 24h) ------
   function tarkovAbs(realMs) { return OFFSET_S + (realMs / 1000) * ACCEL; }
-  function hhmm(tSec) {
-    var s = ((Math.floor(tSec) % DAY_S) + DAY_S) % DAY_S;
-    return String(Math.floor(s / 3600)).padStart(2, "0") + ":" + String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-  }
-  function isNight(tSec) { var h = Math.floor((((tSec % DAY_S) + DAY_S) % DAY_S) / 3600); return h > 21 || h < 5; }
+  function dayPart(tSec) { return ((Math.floor(tSec) % DAY_S) + DAY_S) % DAY_S; }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function hhmm(tSec) { var s = dayPart(tSec); return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor((s % 3600) / 60)); }
+  function hhmmss(tSec) { var s = dayPart(tSec); return hhmm(tSec) + ":" + pad(s % 60); }
+  function isNight(tSec) { var h = Math.floor(dayPart(tSec) / 3600); return h > 21 || h < 5; }
 
   // ---- generation: same picks as WeatherGenerator, laid on the Tarkov clock -
   function pick(weights) {
@@ -358,9 +420,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   }
   function between(a, b) { return a + Math.random() * (b - a); }
 
-  function generate(fromSec, untilSec) {
-    var start = Math.floor(fromSec / DAY_S) * DAY_S;   // Tarkov midnight
-    var weights = Object.assign({}, PRESET_WEIGHTS), previous = null, out = [];
+  // Appends blocks to `out` from `start` until `untilSec`, carrying the preset weights like RaidWeatherService does.
+  function extend(out, start, untilSec, carry) {
+    var weights = carry.weights, previous = carry.previous;
     for (var t = start; t < untilSec;) {
       if (Object.keys(weights).length === 0) weights = Object.assign({}, PRESET_WEIGHTS);
       if (previous && previous in weights) weights[previous] = Math.max(0, weights[previous] - 1);
@@ -375,24 +437,37 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       });
       previous = preset; t += len;
     }
-    return out;
+    carry.weights = weights; carry.previous = previous;
   }
-  // Two Tarkov days ahead covers the far slot plus the longest raid, even with the look-ahead slider at its maximum.
-  function freshSchedule() { var now = tarkovAbs(Date.now()); return generate(now, now + 2 * DAY_S + HALF_S); }
+  function freshSchedule() {
+    var now = tarkovAbs(Date.now()), blocks = [];
+    blocks.carry = { weights: Object.assign({}, PRESET_WEIGHTS), previous: null };
+    extend(blocks, Math.floor(now / DAY_S) * DAY_S, now + 2 * DAY_S + HALF_S, blocks.carry);
+    return blocks;
+  }
+  // Keeps a saved schedule long enough for whatever the page asks of it, the way the server would top it up.
+  function ensureCovers(blocks, untilSec) {
+    var last = blocks[blocks.length - 1];
+    if (last.end < untilSec) extend(blocks, last.end, untilSec + DAY_S, blocks.carry);
+  }
 
   // ---- numbers to words ---------------------------------------------------
   function read(b) {
     var sky = b.clouds <= -0.8 ? ["Clear", "clear"] : b.clouds <= 0.4 ? ["Partly cloudy", "partly"] : b.clouds < 1.1 ? ["Overcast", "overcast"] : ["Stormy skies", "storm"];
-    var label = sky[0], cat = sky[1], g = sky[1], wet = false, foggy = false;
-    if (b.rain >= 2 && snowy()) { wet = true; label = b.rain === 2 ? "Light snow" : b.rain === 3 ? "Snow" : "Heavy snow"; cat = "snow"; g = b.rain === 2 ? "lightsnow" : b.rain === 3 ? "snow" : "heavysnow"; }
-    else if (b.rain >= 2) { wet = true; label = b.rain === 2 ? "Light rain" : b.rain === 3 ? "Rain" : "Heavy rain"; cat = b.rain >= 4 ? "heavy" : "rain"; g = b.rain === 2 ? "lightrain" : b.rain === 3 ? "rain" : "heavy"; }
-    else if (b.fog >= 0.004) { foggy = true; label = b.fog >= 0.006 ? "Dense fog" : "Fog"; cat = "fog"; g = b.fog >= 0.006 ? "densefog" : "fog"; }
+    var label = sky[0], cat = sky[1], g = sky[1], wet = false, foggy = b.fog >= 0.004;
+    var fogLabel = b.fog >= 0.006 ? "Dense fog" : "Fog";
+    if (b.rain >= 2) {
+      wet = true;
+      if (state.winter) { label = b.rain === 2 ? "Light snow" : b.rain === 3 ? "Snow" : "Heavy snow"; cat = "snow"; g = b.rain === 2 ? "lightsnow" : b.rain === 3 ? "snow" : "heavysnow"; }
+      else { label = b.rain === 2 ? "Light rain" : b.rain === 3 ? "Rain" : "Heavy rain"; cat = b.rain >= 4 ? "heavy" : "rain"; g = b.rain === 2 ? "lightrain" : b.rain === 3 ? "rain" : "heavy"; }
+      // Fog under precipitation is still worth knowing about.
+      if (foggy) label += " and " + lower(fogLabel);
+    } else if (foggy) { label = fogLabel; cat = "fog"; g = b.fog >= 0.006 ? "densefog" : "fog"; }
     var wind = b.wind <= 1 ? "Calm" : b.wind === 2 ? "Breezy" : "Strong wind";
     var windG = b.wind <= 1 ? "calm" : b.wind === 2 ? "breezy" : "wind";
     return { label: label, cat: cat, g: g, wet: wet, foggy: foggy, wind: wind, windG: windG, sky: sky[1] };
   }
   function lower(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
-  function round5(m) { return Math.max(5, Math.round(m / 5) * 5); }
 
   // Blocks a raid passes through, merged where they read the same. Minutes are raid (real) minutes.
   function raidSegments(blocks, t0, raidMin) {
@@ -408,14 +483,20 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   function changePhrase(prev, cur, when) {
     if (cur.wet && !prev.wet) return lower(cur.label) + " " + when.from;
-    if (prev.wet && !cur.wet) return (snowy() ? "snow stops " : cur.sky === "clear" || cur.sky === "partly" ? "clearing " : "dry ") + when.by;
+    if (prev.wet && !cur.wet) return (state.winter ? "snow stops " : cur.sky === "clear" || cur.sky === "partly" ? "clearing " : "dry ") + when.by;
     if (cur.foggy && !prev.foggy) return "fog rolling in " + when.at;
     if (prev.foggy && !cur.foggy) return "fog lifting " + when.at;
     return lower(cur.label) + " " + when.from;
   }
+  // A change in the first couple of minutes reads as "within minutes" rather than a rounded-up "~5 min".
+  function whenWords(m) {
+    if (m < 2.5) return { from: "within minutes", by: "within minutes", at: "within minutes" };
+    var mm = "~" + Math.round(m / 5) * 5 + " min";
+    return { from: "from " + mm, by: "by " + mm, at: mm };
+  }
 
-  // Returns the headline and up to two change lines for one slot. When more changes follow than fit,
-  // a last line says so, so the card never implies the weather settles when it doesn't.
+  // Headline plus up to two change lines. When more changes follow than fit, a last line says so,
+  // so the card never implies the weather settles when it doesn't.
   function forecast(blocks, t0, map) {
     var segs = raidSegments(blocks, t0, map.raid);
     if (!segs.length) return { main: { text: "No forecast" }, lines: [], segs: segs };
@@ -424,55 +505,71 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       return { main: { text: first.label + " all raid", g: first.g, night: night0 }, lines: [{ text: first.wind, g: first.windG }], segs: segs };
     }
     for (var k = 1; k < segs.length && k <= 2; k++) {
-      var m = segs[k].from, mm = "~" + round5(m) + " min";
-      var phrase = changePhrase(segs[k - 1].r, segs[k].r, { from: "from " + mm, by: "by " + mm, at: mm });
+      var m = segs[k].from, phrase = changePhrase(segs[k - 1].r, segs[k].r, whenWords(m));
       lines.push({ text: phrase.charAt(0).toUpperCase() + phrase.slice(1), g: segs[k].r.g, night: isNight(t0 + m * 60 * ACCEL) });
     }
-    if (segs.length > 3) lines.push({ text: "More changes after ~" + round5(segs[3].from) + " min" });
+    if (segs.length > 3) lines.push({ text: "More changes after ~" + Math.round(segs[3].from / 5) * 5 + " min", more: true });
     return { main: { text: first.label, g: first.g, night: night0 }, lines: lines, segs: segs };
   }
 
-  // ---- state & rendering --------------------------------------------------
+  // ---- state ----------------------------------------------------------------
   var el = function (id) { return document.getElementById(id); };
   var state = { blocks: freshSchedule(), map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true };
-  function snowy() { return state.winter; }
 
   function nowReal() { return Date.now() + state.ahead * 60e3; }
-  function slotTimes() { var t = tarkovAbs(nowReal()); return [t, t + HALF_S]; }
+  function slotTimes() {
+    if (state.map.oneSlot) return [ICEBREAKER_HOUR * 3600];
+    var t = tarkovAbs(nowReal());
+    return [t, t + HALF_S];
+  }
   // The game clock keeps running while the raid loads. With the lock on, the server serves weather from the moment the slot was confirmed.
   function raidStart(t) { return state.lock ? t : t + state.load * 60 * ACCEL; }
   function summary(fc) { return [fc.main.text].concat(fc.lines.map(function (l) { return lower(l.text); })).join(", "); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]; }); }
 
-  function renderMapList() {
-    el("maplist").innerHTML = MAPS.map(function (m, i) {
-      return "<button type=\"button\" data-i=\"" + i + "\" aria-pressed=\"" + (m === state.map) + "\">" + esc(m.name) + "</button>";
+  // ---- the game screen ------------------------------------------------------
+  function buildMarkers() {
+    el("locs").innerHTML = MAPS.map(function (m, i) {
+      return "<button type=\"button\" class=\"loc" + (m.flip ? " flip" : "") + "\" data-i=\"" + i + "\" aria-pressed=\"" + (m === state.map) + "\" style=\"left:" + (m.x / 6) + "%;top:" + (m.y / 4) + "%\"><i></i><b>" + esc(m.name) + "</b></button>";
     }).join("");
   }
+  function markSelected() {
+    Array.prototype.forEach.call(el("locs").children, function (b) { b.setAttribute("aria-pressed", String(MAPS[Number(b.dataset.i)] === state.map)); });
+  }
 
-  function renderScreen(fcs) {
+  function renderScreen(cards) {
     var m = state.map, times = slotTimes();
-    // Icebreaker always plays at its own pinned hour (TodHour, 23:00 by default), so the mod shows that one slot.
-    if (m.oneSlot) times = [ICEBREAKER_HOUR * 3600];
-    el("slots").classList.toggle("one", !!m.oneSlot);
     el("locName").textContent = m.name;
-    el("locMeta").textContent = m.raid + " min raid  ·  ~" + m.typical + " min typical  ·  avg level " + m.level;
-    el("tarkovClock").textContent = "Tarkov time " + hhmm(times[0]) + (state.ahead ? "  (look-ahead +" + state.ahead + " real min)" : "");
-    el("slots").innerHTML = times.map(function (t, i) {
-      var night = m.oneSlot || isNight(t), fc = fcs[i];
-      // Maps without weather get no card at all.
-      var card = m.indoor ? "" : "<div class=\"fc\"><div class=\"fc-head\"><span>Forecast</span></div>" +
-        "<div class=\"fc-main\">" + glyph(fc.main.g, fc.main.night) + esc(fc.main.text) + "</div>" +
-        fc.lines.map(function (l) { return "<div class=\"fc-line\">" + glyph(l.g, l.night) + esc(l.text) + "</div>"; }).join("") + "</div>";
-      return "<div class=\"slot" + (night ? " is-night" : "") + (state.slot === i ? " selected" : "") + "\">" + card +
-        "<button class=\"slot-btn\" type=\"button\" data-slot=\"" + i + "\" aria-pressed=\"" + (state.slot === i) + "\">" +
-        "<span class=\"t\">" + hhmm(t) + "</span><span class=\"d\">" + (night ? "Night" : "Day") + "</span></button></div>";
+    el("facts").innerHTML = "<dt>Raid time</dt><dd>" + m.raid + " min</dd><dt>Typical raid</dt><dd>~" + m.typical + " min</dd><dt>Average level</dt><dd>" + m.level + "</dd>";
+    el("slotsLabel").textContent = m.indoor ? "Time" : "Time and weather";
+    el("slotHint").textContent = m.indoor ? "" : "Forecast for the whole raid. Weather is set when you press Next.";
+
+    // Keep keyboard focus on the same slot across the periodic refresh.
+    var focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.slot : undefined;
+    var slots = el("slots");
+    slots.classList.toggle("one", times.length === 1);
+    slots.innerHTML = times.map(function (t, i) {
+      var night = m.oneSlot || isNight(t), fc = cards[i];
+      var forecastHtml = m.indoor ? "" : "<span class=\"slot-rule\"></span>" +
+        "<span class=\"fc-main\">" + glyph(fc.main.g, fc.main.night) + esc(fc.main.text) + "</span>" +
+        fc.lines.map(function (l) { return "<span class=\"fc-line" + (l.more ? " more" : "") + "\">" + glyph(l.g, l.night) + esc(l.text) + "</span>"; }).join("");
+      return "<button type=\"button\" class=\"slot\" data-slot=\"" + i + "\" data-t=\"" + t + "\" aria-pressed=\"" + (state.slot === i) + "\">" +
+        "<span class=\"slot-time\">" + (m.oneSlot ? hhmm(t) : hhmmss(t)) + "</span>" +
+        "<span class=\"slot-phase\">" + glyph(night ? "moon" : "sun") + (night ? "Night" : "Day") + "</span>" + forecastHtml + "</button>";
     }).join("");
+    if (focused !== undefined) { var again = slots.querySelector("[data-slot=\"" + focused + "\"]"); if (again) again.focus(); }
+  }
+  // Seconds tick between full refreshes, the way the game's clock does.
+  function tickClocks() {
+    if (state.map.oneSlot) return;
+    var times = slotTimes();
+    Array.prototype.forEach.call(el("slots").querySelectorAll(".slot-time"), function (s, i) { s.textContent = hhmmss(times[i]); });
   }
 
+  // ---- simulation views ------------------------------------------------------
   function renderVerdicts(cards, raids) {
-    var m = state.map, times = slotTimes();
-    if (m.indoor) { el("verdicts").innerHTML = ""; return; }
+    if (state.map.indoor) { el("verdicts").innerHTML = ""; return; }
+    var times = slotTimes();
     el("verdicts").innerHTML = times.map(function (t, i) {
       var ok = summary(cards[i]) === summary(raids[i]);
       return "<div>" + (ok ? "<span class=\"ok\">Match.</span> " : "<span class=\"bad\">Mismatch.</span> ") + hhmm(t) + " slot: " +
@@ -480,15 +577,15 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     }).join("");
   }
 
-  function renderTimeline(fcs) {
+  function renderTimeline(raids) {
     var m = state.map, box = el("tlBox"), times = slotTimes().map(raidStart);
     if (m.indoor) {
-      box.innerHTML = "<p class=\"screen-note\">" + esc(m.name) + " has no forecast. " +
-        (m.oneSlot ? "The mod also trims it to a single 23:00 slot, the hour Icebreaker always plays at." : "Its time slots show without a card.") + "</p>";
+      box.innerHTML = "<p class=\"note\">" + esc(m.name) + " has no forecast. " +
+        (m.oneSlot ? "The mod trims it to a single 23:00 slot, the hour Icebreaker always plays at." : "Its time slots show without one.") + "</p>";
       return;
     }
     var html = "<div class=\"timeline-wrap\"><div class=\"timeline\">";
-    fcs.forEach(function (fc, i) {
+    raids.forEach(function (fc, i) {
       html += "<div class=\"tl-row\"><div class=\"tl-label\">" + (i === 0 ? "Left slot" : "Right slot") + "<b>" + (state.lock ? "" : "from ") + hhmm(times[i]) + "</b></div><div class=\"track\">";
       fc.segs.forEach(function (s, k) {
         var to = k + 1 < fc.segs.length ? fc.segs[k + 1].from : m.raid;
@@ -507,15 +604,17 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   }
 
   function renderRows(raids) {
-    var b = state.blocks, times = slotTimes(), m = state.map, html = "";
-    var used = [{}, {}];
-    if (!m.indoor) raids.forEach(function (fc, i) { fc.segs.forEach(function (s) { s.idx.forEach(function (x) { used[i][x] = true; }); }); });
+    var m = state.map;
+    el("tblSection").hidden = !!m.indoor;
+    if (m.indoor) return;
+    var b = state.blocks, times = slotTimes(), html = "", used = [{}, {}];
+    raids.forEach(function (fc, i) { fc.segs.forEach(function (s) { s.idx.forEach(function (x) { used[i][x] = true; }); }); });
     var lo = b.length, hi = -1, last = times[1] + (m.raid + state.load) * 60 * ACCEL;
     for (var i = 0; i < b.length; i++) if (b[i].end > times[0] && b[i].start < last) { lo = Math.min(lo, i); hi = Math.max(hi, i); }
     for (i = Math.max(0, lo); i <= hi; i++) {
       var x = b[i], r = read(x), tags = "";
-      if (used[0][i]) tags += "<span class=\"pill a\">" + hhmm(times[0]) + " slot</span>";
-      if (used[1][i]) tags += "<span class=\"pill b\">" + hhmm(times[1]) + " slot</span>";
+      if (used[0][i]) tags += "<span class=\"pill\">" + hhmm(times[0]) + " slot</span>";
+      if (used[1][i]) tags += "<span class=\"pill\">" + hhmm(times[1]) + " slot</span>";
       html += "<tr class=\"" + (tags ? "hit" : "") + "\">" +
         "<td class=\"num\">" + hhmm(x.start) + "–" + hhmm(x.end) + "</td><td>" + tags + "</td><td>" + x.preset + "</td>" +
         "<td class=\"num\">" + x.clouds + "</td>" +
@@ -528,6 +627,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   function render() {
     var times = slotTimes();
+    ensureCovers(state.blocks, Math.max.apply(null, times) + (state.map.raid + state.load) * 60 * ACCEL);
     // What the card says, and what the raid actually gets once loading is over.
     var cards = times.map(function (t) { return forecast(state.blocks, t, state.map); });
     var raids = times.map(function (t) { return forecast(state.blocks, raidStart(t), state.map); });
@@ -543,20 +643,28 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   el("glyphKey").innerHTML = [
     ["clear", false, "Clear"], ["clear", true, "Clear, night"], ["partly", false, "Partly cloudy"], ["partly", true, "Partly cloudy, night"],
     ["overcast", false, "Overcast"], ["storm", false, "Stormy skies"], ["lightrain", false, "Light rain"], ["rain", false, "Rain"],
-    ["heavy", false, "Heavy rain"], ["lightsnow", false, "Light snow"], ["snow", false, "Snow"], ["heavysnow", false, "Heavy snow"], ["fog", false, "Fog"], ["densefog", false, "Dense fog"], ["calm", false, "Calm"],
-    ["breezy", false, "Breezy"], ["wind", false, "Strong wind"]
+    ["heavy", false, "Heavy rain"], ["lightsnow", false, "Light snow"], ["snow", false, "Snow"], ["heavysnow", false, "Heavy snow"],
+    ["fog", false, "Fog"], ["densefog", false, "Dense fog"], ["calm", false, "Calm"], ["breezy", false, "Breezy"], ["wind", false, "Strong wind"]
   ].map(function (x) { return "<span>" + glyph(x[0], x[1]) + x[2] + "</span>"; }).join("");
-  renderMapList();
-  el("maplist").addEventListener("click", function (e) {
-    var b = e.target.closest("button"); if (!b) return;
+
+  buildMarkers();
+  el("locs").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-i]"); if (!b) return;
     state.map = MAPS[Number(b.dataset.i)];
     if (state.map.oneSlot) state.slot = 0;
-    renderMapList(); render();
+    markSelected(); render();
   });
   el("slots").addEventListener("click", function (e) {
     var b = e.target.closest("button[data-slot]"); if (!b) return;
     state.slot = Number(b.dataset.slot); render();
+    var again = el("slots").querySelector("[data-slot=\"" + state.slot + "\"]"); if (again) again.focus();
   });
+  el("nextBtn").addEventListener("click", function () {
+    var m = state.map, t = slotTimes()[state.slot];
+    el("status").innerHTML = "<b>" + esc(m.name) + ", " + hhmm(t) + " confirmed.</b> " +
+      (m.indoor ? "No weather to lock on this map." : state.lock ? "The server locks this raid's weather from " + hhmm(t) + " on." : "The lock is off, so the raid takes whatever weather is current when loading ends.");
+  });
+  el("backBtn").addEventListener("click", function () { el("status").textContent = "Back would return to character selection in game."; });
   el("ahead").addEventListener("input", function (e) { state.ahead = Number(e.target.value); render(); });
   function setSeason(winter) {
     state.winter = winter;
@@ -572,15 +680,15 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var kept = el("persist").checked, at = new Date();
     if (!kept) state.blocks = freshSchedule();
     render();
-    var clock = String(at.getHours()).padStart(2, "0") + ":" + String(at.getMinutes()).padStart(2, "0");
+    var clock = pad(at.getHours()) + ":" + pad(at.getMinutes());
     el("status").innerHTML = kept
       ? "<b>Restarted at " + clock + ".</b> The saved schedule was loaded, so both forecasts are unchanged."
       : "<b>Restarted at " + clock + ".</b> No saved schedule, so a new one was rolled and both forecasts may have changed.";
   });
 
-  el("status").textContent = "Pick a map, then compare the two slots. The Tarkov clock runs live, 7 times faster than real time.";
+  el("status").textContent = "Pick a location on the map, then compare the two time slots. The Tarkov clock runs live, 7 times faster than real time.";
   render();
-  // The game clock on the slots ticks forward; refresh every 10 s (70 in-game seconds).
+  setInterval(tickClocks, 1000);
   setInterval(render, 10000);
 })();
 </script>
