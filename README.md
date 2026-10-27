@@ -1,8 +1,8 @@
 # SPTForecaster
 
-A weather forecast for SPT's map selection screen. Above each time slot you see what the weather will do during that raid, so the day and night slots become a real choice.
+Weather for SPT's location screen: a radar over the map showing storms moving across the region, and a forecast above each time slot saying what the weather will do during that raid. Each map has its own weather, and the raid gets exactly what the forecast said.
 
-**Status: 0.0.1 pre-release, not yet tested in game.** Requires SPT 4.1.
+**Status: 0.0.2 pre-release, not yet tested in game.** Requires SPT 4.1.
 
 ## Install
 
@@ -11,42 +11,49 @@ Download `SPTForecaster-<version>.zip` from [Releases](https://github.com/JoelHa
 - `BepInEx/plugins/SPTForecaster.dll` (client)
 - `SPT_Runtime/user/mods/SPTForecaster/SPTForecaster.Server.dll` (server)
 
-Both halves are needed. Settings (F12): show the forecast, make raid weather follow it, lock on confirm, layout offsets and text size, and detailed logging.
+Both halves are needed. Settings (F12):
+- **Forecast:** show the forecast, make raid weather follow it, lock the weather when you confirm a slot.
+- **Radar:** show the radar, radar opacity.
+- **Layout:** forecast offsets and text size.
+- **Debug:** log the forecast and the applied raid weather.
 
 **Works with:**
-- [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast. SPTForecaster reads CloudSix's "Min Cloud Transition Time" and blends weather changes at least that slowly, so the clouds keep pace with the card.
-- [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): no overlap; both can be installed.
+- [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast. SPTForecaster reads CloudSix's "Min Cloud Transition Time" and keeps cloud changes at least that gradual, so the clouds keep pace with the card.
+- [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): its faction map shows through underneath the radar.
 
-Preview: open [docs/forecast-preview.html](docs/forecast-preview.html) in a browser. It simulates the map selection screen and generates a weather schedule with SPT's own rules and default `weather.json` weights.
+Previews (open in a browser): [docs/radar-prototype.html](docs/radar-prototype.html) is the radar and forecast as built in 0.0.2; [docs/forecast-preview.html](docs/forecast-preview.html) is the earlier single-schedule design.
 
 ## What it shows
 
-The forecast is built into the game's own time toggles, so it reads as part of the location screen rather than an overlay:
+**The radar.** Over the location map, below the map buttons: rain in radar colours (light green through yellow and red to magenta for the heaviest cores; blues and whites for snow in winter), fog as a faint grey veil. Light rain is a faint wash so the map stays readable; only small heavy cores are strong. It shows the selected time slot and moves on as the clock does.
+
+**The forecast**, built into the game's own time toggles:
 
 ```
- LOCATION
- CUSTOMS
- Raid time 40 min · Typical raid ~25 min · Average level 20
-
- TIME AND WEATHER
- ┌───────────────────────┐  ┌───────────────────────┐
- │ 14:32:07              │  │ 02:32:07              │
- │ ☀ DAY                 │  │ ☾ NIGHT               │
- │ ───────────────────── │  │ ───────────────────── │
- │ ☁ Overcast            │  │ ☾ Clear all raid      │
- │ ☂ Rain from ~15 min   │  │ ≈ Breezy              │
- │ ☀ Clearing by ~35 min │  │                       │
- └───────────────────────┘  └───────────────────────┘
- Forecast for the whole raid. Weather is set when you press Next.
+ ┌───────────────────────────┐  ┌───────────────────────────┐
+ │ ☁ Overcast                │  │ ☾ Clear all raid          │
+ │ ☂ Rain from ~15 min       │  │   Breezy                  │
+ │ ☀ Clearing by ~35 min     │  │   Fair weather until ~09:00│
+ │   Unsettled until ~18:00  │  │                           │
+ ├───────────────────────────┤  ├───────────────────────────┤
+ │ 14:32:07                  │  │ 02:32:07                  │
+ └───────────────────────────┘  └───────────────────────────┘
 ```
 
-- The clock ticks like the game's own; the selected toggle inverts (light fill, dark text) as the game's toggles do.
-- A headline condition, then up to two changes with the raid minute they happen at. A change in the first couple of minutes reads "within minutes".
-- Fog under rain or snow is named too ("Rain and dense fog").
-- If more changes follow than fit, a last line says "More changes after ~X min". The card only says "all raid" when the weather really doesn't change.
-- A glyph for every condition: clear, partly cloudy (each with a night moon version), overcast, stormy skies, light/normal/heavy rain, light/normal/heavy snow, fog, dense fog, calm, breezy, strong wind.
-- No temperatures.
-- In winter, precipitation is described as snow.
+- A headline condition, then up to two changes with the raid minute they happen at ("within minutes" for the first couple of minutes), and the weather pattern with when it ends.
+- Changes too close together to get their own time are folded into one, so a card never lists two changes at the same minute.
+- Fog under rain or snow is named ("Rain and dense fog"). "All raid" only when the weather really doesn't change. No temperatures.
+- Icons are the game's own weather icons.
+
+**Weather patterns.** Every 8 in-game hours the region rolls one, and they hand over gradually:
+
+| Pattern | How often | What it brings |
+|---|---|---|
+| Fair weather | ~32% | Mostly clear, a stray shower |
+| Unsettled | ~30% | Scattered showers, sometimes a front |
+| Prolonged rain | ~14% | A wide, slow rain shield for 8+ hours |
+| Coastal fog | ~13% | A fog bank along the coast over Lighthouse and Shoreline |
+| Storm front | ~10% | A fast squall line with heavy cores |
 
 ### Maps
 
@@ -58,34 +65,24 @@ The forecast is built into the game's own time toggles, so it reads as part of t
 
 ## How it works
 
-### Why vanilla SPT can't do this
+**Why vanilla SPT can't do this.** SPT picks a raid's weather from one schedule on the real clock. Every map shares it, and the time slot you pick only moves the in-game clock, so both slots always get the same weather.
 
-SPT's `RaidWeatherService` generates 24 hours of weather in 15- or 30-minute blocks and picks the raid's weather from the **real** clock. The chosen time slot only moves the in-game clock (`WeatherHelper.IsNightTime` adds 12 hours for the right-hand slot); it never affects which weather block the raid gets. So in vanilla, both slots always get identical weather.
-
-### What the mod changes
-
-1. **Weather on the Tarkov clock.** The server generates the schedule against in-game time (real time × 7 + 3 hours) using the same preset picks and value tables as vanilla. Blocks last 105 or 210 in-game minutes, which is the same 15 or 30 real minutes, so weather changes at the vanilla pace during a raid. The right-hand slot gets the weather due 12 in-game hours later.
-2. **One lookup for both.** The forecast and the raid use the same function on the same schedule, so they cannot disagree.
-3. **Locked at confirm.** When you confirm a slot, the client tells the server the slot and the time. The raid's weather starts from that moment, so loading time (1–3 real minutes, 7–21 in-game) can't push the raid into a different block.
-4. **Survives restarts.** Vanilla keeps the schedule in memory only and rolls a new one on every server start. The mod saves it to `user/mods/SPTForecaster/` and reloads it, dropping blocks that have passed.
-
-Parts: a server mod (schedule, persistence, forecast route, slot lock) and a BepInEx client plugin (cards and glyphs on the map selection screen, sending the chosen slot).
+**What the mod does.**
+1. **Weather is a field over the region,** built from one seed: rain cells, fronts, squall lines, rain shields and fog banks drift with a slowly turning wind and grow and fade, shaped by the current weather pattern, with noise for ragged edges and cellular rain.
+2. **Each map reads the field at its own button.** The game places each map's button at a fixed fraction of the map (`IconX`, `IconY` in its `base.json`), and the field uses the same fractions, so the radar lines up with the buttons at any resolution and modded maps work too.
+3. **The radar, the forecast and the raid come from one calculation.** The client works out all three from the same code and seed. The game samples its weather curve with the raid's in-game clock, and the mod hands it that map's readings on that clock, so the raid gets what the card says.
+4. **Slots differ.** Time is in-game time, so the right-hand slot gets the weather due 12 in-game hours later.
+5. **Locked at confirm.** The weather starts from the moment you press Next or Ready, so loading time can't move it.
+6. **Survives restarts.** The server saves the seed, so the same weather continues after a restart. Every client of the server gets the same seed.
 
 ## Open questions
 
-- **Answered: how the client applies weather in raid.** It builds a curve from the weather nodes and samples it with the raid's in-game clock. The client plugin hands it nodes laid on that clock from the same schedule the forecast reads, so the two cannot disagree. Still to confirm in game.
-- **Card placement.** The forecast sits above each time toggle; the prefab's layout hasn't been seen, so offsets are adjustable (F12) until the first test settles them.
-- **Winter rain as snow.** The assumption is that the client renders rain as snow in the winter season. To confirm in game.
-- **Wording cut-offs.** The thresholds that turn raw values into words (e.g. how much rain counts as "light rain") need tuning against screenshots.
-- **Other weather mods** (SVM, Realism seasons) may change the schedule after it's read. Detect and warn, or read last.
-- **Icebreaker's two slots.** Icebreaker doesn't appear to change the time selection, so the game likely shows two slots. To confirm in game before trimming to one.
+- **Placement.** The forecast's position above the toggles and the radar's layer on the map are set up from the game's code, not seen in game yet; forecast offsets are adjustable (F12).
+- **Winter rain as snow.** The client is expected to render rain as snow in winter. To confirm in game.
+- **Wording cut-offs.** How much rain counts as "light rain" and so on needs tuning against screenshots.
+- **Other weather mods** (SVM, Realism seasons) may change the weather after the mod sets it.
+- **Fika co-op** is untested.
 
 ## Verifying accuracy
 
-The first build logs, at raid start, the weather the client actually applied next to what the card promised:
-
-```
-[Forecast] promised Rain, applied clouds 1.0 rain 3 -> match
-```
-
-A dozen raids across both slots and a few block changes should show any mismatch before release.
+With "Log weather details" on, `BepInEx/LogOutput.log` gets the forecast for each slot, a line when you confirm, and at raid start the weather the raid was given with the forecast for that start. A few raids across both slots, waiting for a change the card named, should show any mismatch.

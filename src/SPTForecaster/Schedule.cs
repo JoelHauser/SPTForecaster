@@ -1,12 +1,11 @@
 using System;
-using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using SPT.Common.Http;
 using UnityEngine;
 
 namespace SPTForecaster
 {
-    /// <summary>One stretch of weather. Start and End are Tarkov seconds, as the server mod defines them.</summary>
+    /// <summary>One stretch of a location's weather. Start and End are Tarkov seconds.</summary>
     internal sealed class Block
     {
         public long Start;
@@ -23,8 +22,9 @@ namespace SPTForecaster
     }
 
     /// <summary>
-    /// The server mod's schedule, cached. Both the forecast and the raid's weather are built from it,
-    /// which is what keeps them from disagreeing.
+    /// What the server mod provides: the weather seed (saved on the server, so a restart keeps the same
+    /// weather), the season and the time acceleration. Everything else is worked out here from the seed by
+    /// <see cref="Field"/>, so the forecast, the radar and the raid's weather all come from one place.
     ///
     /// Tarkov seconds: real Unix seconds × acceleration + 3 hours. Their time of day is the game's Tarkov
     /// clock (WeatherHelper.GetInRaidTime on the server), and the right-hand slot is that plus 12 hours.
@@ -37,9 +37,9 @@ namespace SPTForecaster
         private const float RefreshSeconds = 60f;
         private const float RetrySeconds = 15f;
 
-        private static List<Block> _blocks;
         private static float _fetchedAt = -1000f;
         private static float _failedAt = -1000f;
+        private static bool _ready;
         private static bool _warned;
 
         public static double Acceleration { get; private set; } = 7;
@@ -52,53 +52,33 @@ namespace SPTForecaster
         public static double TarkovNow =>
             OffsetSeconds + (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds * Acceleration;
 
-        /// <summary>The cached schedule, refetched once a minute. Null when the server mod is not answering.</summary>
-        public static List<Block> Get(bool force = false)
+        /// <summary>
+        /// Whether the server's seed is in hand, fetching it if it is missing or a minute old. False when the
+        /// server mod is not answering. Main thread only (it uses Time and SPT's request handler).
+        /// </summary>
+        public static bool Ready(bool force = false)
         {
             var now = Time.realtimeSinceStartup;
-            var stale = _blocks == null || now - _fetchedAt > RefreshSeconds;
-            if ((force || stale) && now - _failedAt > RetrySeconds)
+            if ((force || !_ready || now - _fetchedAt > RefreshSeconds) && now - _failedAt > RetrySeconds)
             {
                 Fetch();
             }
 
-            return _blocks;
+            return _ready;
         }
 
         private static void Fetch()
         {
             try
             {
-                var body = RequestHandler.PostJson("/sptforecaster/schedule", "{}");
-                if (string.IsNullOrEmpty(body))
-                {
-                    throw new Exception("empty response");
-                }
+                var body = RequestHandler.PostJson("/sptforecaster/field", "{}");
+                if (string.IsNullOrEmpty(body)) throw new Exception("empty response");
 
                 var json = JObject.Parse(body);
                 Acceleration = json.Value<double?>("acceleration") ?? 7;
                 Season = json.Value<int?>("season") ?? 0;
-
-                var list = new List<Block>();
-                foreach (var b in (JArray)json["blocks"])
-                {
-                    list.Add(new Block
-                    {
-                        Start = b.Value<long>("Start"),
-                        End = b.Value<long>("End"),
-                        Clouds = b.Value<double>("Clouds"),
-                        WindSpeed = b.Value<double>("WindSpeed"),
-                        WindDirection = b.Value<int>("WindDirection"),
-                        WindGustiness = b.Value<double>("WindGustiness"),
-                        Rain = b.Value<double>("Rain"),
-                        RainIntensity = b.Value<double>("RainIntensity"),
-                        Fog = b.Value<double>("Fog"),
-                        Temperature = b.Value<double>("Temperature"),
-                        Pressure = b.Value<double>("Pressure"),
-                    });
-                }
-
-                _blocks = list;
+                Field.Seed = json.Value<int>("seed");
+                _ready = true;
                 _fetchedAt = Time.realtimeSinceStartup;
                 _warned = false;
             }
@@ -108,7 +88,7 @@ namespace SPTForecaster
                 if (!_warned)
                 {
                     _warned = true;
-                    ForecasterPlugin.Log.LogWarning($"Could not get the weather schedule from the server ({ex.Message}). Is the SPTForecaster server mod installed?");
+                    ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the SPTForecaster 0.0.2 server mod installed?");
                 }
             }
         }

@@ -7,31 +7,26 @@ using SPTarkov.Server.Core.Utils;
 namespace SPTForecaster.Server;
 
 /// <summary>
-/// One route: the schedule, with what the client needs to read it.
-/// The client both draws the forecast from this and builds the raid's weather from it, so the two
-/// cannot disagree.
+/// One route: the weather seed, season and time acceleration. The client builds the forecast, the radar
+/// and the raid's weather from these, so all three come from one calculation and cannot disagree.
 /// </summary>
 [Injectable(TypePriority = OnLoadOrder.Routers)]
-public class ForecastRouter(JsonUtil jsonUtil, ForecastSchedule schedule)
+public class ForecastRouter(JsonUtil jsonUtil, WeatherSeed weather)
     : StaticRouter(
         jsonUtil,
         [
             new RouteAction<EmptyRequestData>(
-                "/sptforecaster/schedule",
+                "/sptforecaster/field",
                 async (url, info, sessionId, output, cancellationToken) =>
-                    await ValueTask.FromResult(Respond(schedule))),
+                    await ValueTask.FromResult(Respond(weather))),
         ])
 {
-    private static string Respond(ForecastSchedule schedule)
-    {
-        var blocks = schedule.Snapshot();
-        return JsonSerializer.Serialize(new
+    private static string Respond(WeatherSeed weather) =>
+        JsonSerializer.Serialize(new
         {
             version = "0.0.2",
-            acceleration = schedule.Acceleration,
-            now = schedule.TarkovNow,
-            season = schedule.Season,
-            blocks,
+            seed = weather.Seed,
+            season = weather.Season,
+            acceleration = weather.Acceleration,
         });
-    }
 }

@@ -15,6 +15,8 @@ namespace SPTForecaster
         internal static ConfigEntry<bool> ShowForecast;
         internal static ConfigEntry<bool> ApplyWeather;
         internal static ConfigEntry<bool> LockOnConfirm;
+        internal static ConfigEntry<bool> ShowRadar;
+        internal static ConfigEntry<float> RadarOpacity;
         internal static ConfigEntry<float> OffsetX;
         internal static ConfigEntry<float> OffsetY;
         internal static ConfigEntry<float> TextScale;
@@ -31,6 +33,12 @@ namespace SPTForecaster
             LockOnConfirm = Config.Bind("Forecast", "Lock weather when the slot is confirmed", true,
                 "The raid's weather starts from the moment you press Next or Ready, so loading time cannot move it into a different block.");
 
+            ShowRadar = Config.Bind("Radar", "Show weather radar", true,
+                "Draw the weather radar over the map on the location screen, for the selected time slot.");
+            RadarOpacity = Config.Bind("Radar", "Radar opacity", 1f,
+                new ConfigDescription("How strongly the radar is drawn. 1 is the default light wash; lower lets more of the map show through.",
+                    new AcceptableValueRange<float>(0.2f, 1.5f)));
+
             OffsetX = Config.Bind("Layout", "Horizontal offset", 0f,
                 new ConfigDescription("Moves the forecast sideways from its time slot.", new AcceptableValueRange<float>(-400f, 400f)));
             OffsetY = Config.Bind("Layout", "Vertical offset", 6f,
@@ -46,13 +54,30 @@ namespace SPTForecaster
             OffsetY.SettingChanged += (_, __) => ForecastPanel.RefreshAll();
             TextScale.SettingChanged += (_, __) => ForecastPanel.RefreshAll();
 
-            new ConditionsPanelSetPatch().Enable();
-            new ConditionsPanelUpdatePatch().Enable();
-            new NextButtonPatch().Enable();
-            new ReadyButtonPatch().Enable();
-            new SetWeatherNodesPatch().Enable();
+            ShowRadar.SettingChanged += (_, __) => RadarLayer.Invalidate();
+            RadarOpacity.SettingChanged += (_, __) => RadarLayer.Invalidate();
+
+            // Each on its own, so one that can't find its target doesn't stop the rest.
+            Enable(new LocationScreenShowPatch());
+            Enable(new ConditionsPanelSetPatch());
+            Enable(new ConditionsPanelUpdatePatch());
+            Enable(new NextButtonPatch());
+            Enable(new ReadyButtonPatch());
+            Enable(new SetWeatherNodesPatch());
 
             Log.LogInfo($"SPTForecaster {PluginVersion} loaded.");
+        }
+
+        private static void Enable(SPT.Reflection.Patching.ModulePatch patch)
+        {
+            try
+            {
+                patch.Enable();
+            }
+            catch (System.Exception ex)
+            {
+                Log.LogError($"Could not enable {patch.GetType().Name}: {ex.Message}");
+            }
         }
     }
 }

@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forecaster Weather Radar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the game screen first (schematic map left, location panel right, forecast built into the time toggles),
+   then the simulation controls and the schedule the cards are written from. One dark look, matching the game's menus. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0c0b;
+  --screen: #101110;
+  --panel: rgba(12, 13, 12, .86);
+  --panel-solid: #151614;
+  --line: #34362f;
+  --line-soft: #24261f;
+  --fg: #c7c5b4;
+  --fg-hi: #ecebe0;
+  --muted: #84826f;
+  --sel-bg: #c7c5b4;
+  --sel-fg: #0d0e0c;
+  --sea: #0d1314;
+  --land: #171914;
+  --road: #2f322a;
+  --sky-clear: #d4b25c;
+  --sky-partly: #9ba493;
+  --sky-overcast: #67737a;
+  --sky-storm: #4a4f63;
+  --rain: #4f80aa;
+  --rain-heavy: #33608f;
+  --fog: #a8a79c;
+  --snow: #c9d3dc;
+  --ok: #9fbf7a;
+  --miss: #d0704f;
+  --font-game: "Rajdhani", "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+main { max-width: 1120px; margin: 0 auto; display: grid; gap: 32px; }
+h1, h2, h3 { font-family: var(--font-game); font-weight: 700; margin: 0; text-wrap: balance; }
+h1 { font-size: 30px; letter-spacing: .04em; color: var(--fg-hi); }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 72ch; margin-top: 6px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--fg-hi); outline-offset: 2px; }
+
+/* ---------- the game screen ---------- */
+.eft { border: 1px solid var(--line); background: var(--screen); font-family: var(--font-game); }
+.eft-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line-soft); background: #0c0d0c; flex-wrap: wrap; }
+.eft-title { font-size: 20px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-hi); }
+.eft-steps { display: flex; gap: 6px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.eft-steps span { padding: 2px 8px; border: 1px solid var(--line-soft); }
+.eft-steps span.on { color: var(--sel-fg); background: var(--sel-bg); border-color: var(--sel-bg); }
+.eft-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); min-height: 470px; }
+
+.map { position: relative; overflow: hidden; border-right: 1px solid var(--line-soft); background: var(--sea); min-height: 320px; }
+/* markers are placed in % of this 3:2 frame, so the frame keeps the drawing's ratio whatever the column's height */
+.map-inner { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); aspect-ratio: 3 / 2; }
+.map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+[hidden] { display: none !important; }
+#radar, #territory { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.radar-bar { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(8,9,8,.82); border: 1px solid var(--line); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+.radar-bar button { padding: 3px 10px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--fg); font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.radar-bar button:hover { border-color: var(--fg); }
+.radar-bar button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
+.radar-time { font-family: var(--font-data); font-weight: 500; letter-spacing: 0; text-transform: none; min-width: 11em; }
+.radar-bar input[type=range] { width: 110px; accent-color: var(--fg); }
+.radar-op { display: flex; align-items: center; gap: 6px; padding-left: 8px; border-left: 1px solid var(--line); }
+.radar-op input[type=range] { width: 70px; }
+.radar-key { position: absolute; left: 10px; top: 10px; display: flex; gap: 3px; align-items: center; padding: 4px 7px; background: rgba(8,9,8,.75); border: 1px solid var(--line-soft); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.radar-key i { width: 14px; height: 8px; display: inline-block; }
+.radar-key span { margin: 0 4px; }
+.radar-pattern { color: var(--fg); font-weight: 700; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
+@media (max-width: 520px) { .radar-key { display: none; } .radar-time { min-width: 0; } .radar-bar { left: 10px; flex-wrap: wrap; } .radar-bar input[type=range] { flex: 1; width: auto; } }
+.map-note { position: absolute; left: 12px; bottom: 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(199,197,180,.35); }
+.loc { position: absolute; transform: translate(-7px, -7px); display: flex; align-items: center; gap: 7px; background: none; border: 0; padding: 0; white-space: nowrap; }
+.loc i { width: 14px; height: 14px; border: 1.5px solid var(--fg); background: var(--screen); transform: rotate(45deg); flex: none; transition: background .15s, border-color .15s; }
+.loc b { font-weight: 600; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg); text-shadow: 0 1px 2px #000; padding: 1px 5px; transition: background .15s, color .15s; }
+.loc:hover b { color: var(--fg-hi); }
+.loc:hover i { border-color: var(--fg-hi); }
+.loc[aria-pressed="true"] i { background: var(--sel-bg); border-color: var(--sel-bg); box-shadow: 0 0 0 4px rgba(199,197,180,.18); }
+.loc[aria-pressed="true"] b { background: var(--sel-bg); color: var(--sel-fg); text-shadow: none; }
+.loc.flip { flex-direction: row-reverse; transform: translate(calc(-100% + 7px), -7px); }
+
+.side { display: grid; grid-template-rows: auto auto 1fr auto; background: var(--panel); min-width: 0; }
+.side-block { padding: 16px 18px; border-bottom: 1px solid var(--line-soft); display: grid; gap: 8px; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.loc-name { font-size: clamp(26px, 3.4vw, 34px); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-hi); line-height: 1.05; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; font-size: 15px; font-weight: 500; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; color: var(--fg); font-variant-numeric: tabular-nums; }
+
+.slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.slots.one { grid-template-columns: minmax(0, 1fr); }
+.slot { display: grid; align-content: start; gap: 6px; text-align: left; padding: 12px 12px 14px; min-width: 0; background: rgba(0,0,0,.35); border: 1px solid var(--line); color: var(--fg); transition: background .15s, border-color .15s, color .15s; }
+.slot:hover { border-color: var(--fg); }
+.slot[aria-pressed="true"] { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-fg); }
+.slot-time { font-size: 30px; font-weight: 700; letter-spacing: .03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.slot-phase { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; opacity: .75; }
+.slot-rule { height: 1px; background: currentColor; opacity: .25; margin: 4px 0 2px; }
+.fc-main { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; letter-spacing: .02em; line-height: 1.15; }
+.fc-line { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; line-height: 1.2; opacity: .85; }
+.fc-main .gl { width: 24px; height: 24px; }
+.fc-line .gl, .slot-phase .gl { width: 16px; height: 16px; }
+.fc-line.more { opacity: .6; font-weight: 500; }
+.slot-hint { font-size: 13px; font-weight: 500; color: var(--muted); }
+
+.side-actions { display: flex; justify-content: space-between; gap: 10px; padding: 14px 18px; }
+.eft-btn { min-width: 110px; padding: 9px 18px; font-family: var(--font-game); font-size: 15px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--fg); }
+.eft-btn:hover { border-color: var(--fg); color: var(--fg-hi); }
+.eft-btn.primary { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
+.eft-btn.primary:hover { background: var(--fg-hi); }
+
+/* glyphs: stroked in currentColor; --gbg is the surface behind them, used to mask a sun or moon behind a cloud */
+.gl { width: 1.15em; height: 1.15em; flex: none; display: inline-block; vertical-align: -.2em; }
+.slot { --gbg: #0d0e0d; }
+.slot[aria-pressed="true"] { --gbg: var(--sel-bg); }
+
+/* ---------- simulation ---------- */
+.sim { display: grid; gap: 14px; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; padding: 16px; background: var(--panel-solid); border: 1px solid var(--line-soft); }
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.field > span { font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+.ctl { background: #1b1c19; border: 1px solid var(--line); border-radius: 0; padding: 7px 10px; }
+.ctl:hover { border-color: var(--fg); }
+input[type=range] { width: 100%; accent-color: var(--fg); }
+.mono { font-family: var(--font-data); font-size: 13px; }
+.seg { display: flex; }
+.seg button { flex: 1; }
+.seg button + button { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); font-weight: 600; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.check input { margin-top: 4px; accent-color: var(--fg); }
+.status { grid-column: 1 / -1; font-size: 14px; color: var(--muted); min-height: 1.5em; }
+.status b { color: var(--fg); font-weight: 600; }
+.verdicts { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+.verdicts .ok { color: var(--ok); font-weight: 600; }
+.verdicts .bad { color: var(--miss); font-weight: 600; }
+
+.section { display: grid; gap: 12px; }
+.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section-head p, .note { color: var(--muted); font-size: 14px; }
+
+.timeline-wrap { overflow-x: auto; }
+.timeline { min-width: 560px; display: grid; gap: 10px; }
+.tl-row { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: center; }
+.tl-label { font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); line-height: 1.3; }
+.tl-label b { display: block; color: var(--fg); font-family: var(--font-data); font-weight: 500; letter-spacing: 0; font-size: 13px; }
+.track { height: 40px; display: flex; border: 1px solid var(--line); }
+.blk { height: 100%; border-right: 1px solid rgba(0,0,0,.45); overflow: hidden; padding: 4px 7px; font-size: 12px; line-height: 1.2; color: #0f110d; font-weight: 600; min-width: 0; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+.blk .gl { width: 18px; height: 18px; }
+.c-clear { background: var(--sky-clear); --gbg: var(--sky-clear); }
+.c-partly { background: var(--sky-partly); --gbg: var(--sky-partly); }
+.c-overcast { background: var(--sky-overcast); --gbg: var(--sky-overcast); color: var(--fg-hi); }
+.c-storm { background: var(--sky-storm); --gbg: var(--sky-storm); color: var(--fg-hi); }
+.c-rain { background: var(--rain); --gbg: var(--rain); color: var(--fg-hi); background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.10) 0 2px, transparent 2px 9px); }
+.c-heavy { background: var(--rain-heavy); --gbg: var(--rain-heavy); color: var(--fg-hi); background-image: repeating-linear-gradient(115deg, rgba(255,255,255,.16) 0 2px, transparent 2px 6px); }
+.c-fog { background: var(--fog); --gbg: var(--fog); background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.18) 0 3px, transparent 3px 8px); }
+.c-snow { background: var(--snow); --gbg: var(--snow); background-image: radial-gradient(rgba(255,255,255,.7) 1px, transparent 1.5px); background-size: 7px 7px; }
+.ticks { position: relative; height: 18px; font-family: var(--font-data); font-size: 11px; color: var(--muted); margin-left: 102px; }
+.ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; margin-right: 6px; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line-soft); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 700px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+th { font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); background: var(--panel-solid); }
+td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+td .gl { width: 18px; height: 18px; margin-right: 6px; --gbg: var(--bg); }
+tr.hit td { background: #151612; }
+tr.hit td .gl { --gbg: #151612; }
+.pill { display: inline-block; font-family: var(--font-game); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 0 6px; border: 1px solid var(--line); margin-right: 4px; }
+
+.glyph-key { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px 16px; font-size: 14px; color: var(--muted); --gbg: var(--bg); }
+.glyph-key span { display: flex; align-items: center; gap: 10px; }
+.glyph-key .gl { width: 24px; height: 24px; color: var(--fg); }
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; font-size: 14px; color: var(--muted); }
+.notes h3 { font-size: 14px; text-transform: uppercase; letter-spacing: .12em; color: var(--fg); margin-bottom: 6px; }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
+
+@media (max-width: 760px) {
+  .eft-body { grid-template-columns: 1fr; }
+  .map { border-right: 0; border-bottom: 1px solid var(--line-soft); aspect-ratio: 3 / 2; min-height: 0; }
+  .loc b { font-size: 11px; }
+  .eft-steps { display: none; }
+}
+@media (max-width: 420px) {
+  .slots { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <h1>SPTForecaster radar</h1>
+    <p class="lede">Prototype: weather as a field over the region instead of one global schedule. Storms drift across the map, each location reads the field at its own spot, and the radar draws the same field, so what you see on it is what the raid gets.</p>
+  </header>
+
+  <section class="eft" aria-label="Location selection screen">
+    <div class="eft-top">
+      <div class="eft-title">Select location</div>
+      <div class="eft-steps" aria-hidden="true"><span>Character</span><span class="on">Location</span><span>Insurance</span><span>Ready</span></div>
+    </div>
+    <div class="eft-body">
+      <div class="map" id="map">
+        <div class="map-inner">
+        <svg viewBox="0 0 600 400" aria-hidden="true">
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="rgba(199,197,180,.05)" stroke-width="1"/></pattern>
+          </defs>
+          <!-- Stand-in for the game's map art. Only the marker positions are real. -->
+          <rect width="600" height="400" fill="var(--land)"/>
+          <rect width="600" height="400" fill="url(#grid)"/>
+          <text x="300" y="392" text-anchor="middle" fill="rgba(199,197,180,.18)" font-size="11" letter-spacing="2" font-family="Rajdhani, sans-serif">GAME MAP ART GOES HERE · MARKERS AT THE GAME'S OWN POSITIONS</text>
+        </svg>
+        <!-- Layer order as the mod would place them: map art, TushonkaTerritories' faction map (if installed), radar, then the game's buttons. -->
+        <canvas id="territory" width="600" height="400" aria-hidden="true" hidden></canvas>
+        <canvas id="radar" width="600" height="400" aria-hidden="true"></canvas>
+        <div id="locs"></div>
+        </div>
+        <div class="radar-key" id="radarKey" aria-hidden="true"></div>
+        <div class="radar-bar">
+          <button type="button" id="radarToggle" aria-pressed="true">Radar</button>
+          <button type="button" id="radarPlay" aria-pressed="false">Play raid</button>
+          <input type="range" id="radarScrub" min="0" max="1000" value="0" aria-label="Raid time on the radar">
+          <span class="radar-time" id="radarTime" aria-live="off"></span>
+          <label class="radar-op">Opacity <input type="range" id="opacity" min="20" max="150" step="5" value="100" aria-describedby="opacityHint"></label>
+          <span id="opacityHint" hidden>Also an F12 setting in the mod.</span>
+        </div>
+      </div>
+      <div class="side">
+        <div class="side-block">
+          <div class="label">Location</div>
+          <div class="loc-name" id="locName"></div>
+          <dl class="facts" id="facts"></dl>
+        </div>
+        <div class="side-block">
+          <div class="label" id="slotsLabel">Time and weather</div>
+          <div class="slots" id="slots"></div>
+          <p class="slot-hint" id="slotHint"></p>
+        </div>
+        <div></div>
+        <div class="side-actions">
+          <button class="eft-btn" type="button" id="backBtn">Back</button>
+          <button class="eft-btn primary" type="button" id="nextBtn">Next</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sim" aria-labelledby="simHead">
+    <div class="section-head">
+      <h2 id="simHead">Simulation</h2>
+      <p>Controls for testing the cards. None of these exist in game.</p>
+    </div>
+    <div class="controls">
+      <label class="field"><span>Look ahead in real time</span>
+        <input id="ahead" type="range" min="0" max="240" step="5" value="0">
+        <span class="mono" id="aheadLabel"></span>
+      </label>
+      <div class="field"><span>Season</span>
+        <div class="seg" role="group" aria-label="Season">
+          <button class="ctl" id="seaSummer" type="button" aria-pressed="true">Summer</button>
+          <button class="ctl" id="seaWinter" type="button" aria-pressed="false">Winter</button>
+        </div>
+      </div>
+      <div class="field"><span>Loading time</span>
+        <input id="load" type="range" min="0" max="5" step="0.5" value="2">
+        <span class="mono" id="loadLabel"></span>
+        <label class="check"><input id="lock" type="checkbox" checked> Lock the raid's weather when the slot is confirmed</label>
+      </div>
+      <div class="field"><span>Other mods</span>
+        <label class="check"><input id="territories" type="checkbox"> TushonkaTerritories installed (its faction map under the radar)</label>
+      </div>
+      <div class="field"><span>Server restart</span>
+        <button class="ctl" id="restart" type="button">Restart server</button>
+        <label class="check"><input id="persist" type="checkbox" checked> Keep the schedule across restarts</label>
+      </div>
+      <p class="status" id="status" role="status"></p>
+    </div>
+    <div class="verdicts" id="verdicts" aria-live="polite"></div>
+  </section>
+
+  <section class="section" aria-labelledby="tlHead">
+    <div class="section-head">
+      <h2 id="tlHead">What each slot's raid will get</h2>
+      <p>Raid minutes along the bottom. One raid minute is 7 in-game minutes.</p>
+    </div>
+    <div id="tlBox"></div>
+  </section>
+
+  <section class="section" aria-labelledby="keyHead">
+    <h2 id="keyHead">Glyphs</h2>
+    <div class="glyph-key" id="glyphKey"></div>
+  </section>
+
+  <section class="notes" aria-label="About this preview">
+    <div>
+      <h3>Taken from SPT</h3>
+      <ul>
+        <li>Tarkov time is real time × 7 plus 3 hours; the right-hand slot is 12 hours ahead (<code>WeatherHelper</code>).</li>
+        <li>Night is after 21:00 and before 05:00.</li>
+        <li>The game samples its weather curve with the raid's in-game clock, so a location's samples become the raid's weather nodes directly.</li>
+        <li>Value ranges match <code>weather.json</code>: clouds −1 to 1.2, rain levels 1–5, fog 0.0013 upward, wind 0–4.</li>
+        <li>Raid lengths from each map's <code>base.json</code>.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>How the field works</h3>
+      <ul>
+        <li>Every 8 in-game hours the region rolls a weather pattern: fair weather, unsettled, prolonged rain, a storm front, or coastal fog. Weather already in the sky carries over, so patterns hand over gradually.</li>
+        <li>Storms have shapes: small lumpy showers; fronts and squall lines as long curved bands across the wind, sharp in front with rain trailing behind; a wide, slow shield of prolonged rain; fog lying along the coast. Noise roughens every edge and breaks rain into cells.</li>
+        <li>Each location samples the field at its marker every 14 in-game minutes (two real minutes). The cards, the radar and the raid all read those samples.</li>
+        <li>Everything comes from one seed, so saving the seed is all a server restart needs.</li>
+        <li>Thresholds have a little hysteresis so a cell edge passing over a map doesn't flicker the forecast.</li>
+        <li>The radar is a light wash with fine outlines at each rain level, so the map art and TushonkaTerritories' faction colours show through it.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- data from SPT_Data ----
+  // ix, iy are each location's IconX / IconY from base.json. The game anchors its map buttons at
+  // (IconX / 1000, IconY / 1000) of the map container, with y measured from the bottom, so these are the
+  // real positions; at() turns them into the 600 x 400 view used here.
+  function at(m) { m.x = m.ix * 0.6; m.y = (1000 - m.iy) * 0.4; return m; }
+  var MAPS = [
+    { name: "Customs", raid: 40, typical: 25, level: 20, ix: 550, iy: 460 },
+    { name: "Factory", raid: 20, typical: 15, level: 1, indoor: true, ix: 470, iy: 510, flip: true },
+    { name: "Interchange", raid: 40, typical: 35, level: 25, ix: 660, iy: 360 },
+    { name: "The Lab", raid: 35, typical: 30, level: 45, indoor: true, ix: 700, iy: 800 },
+    { name: "Labyrinth", raid: 40, typical: 25, level: 15, indoor: true, ix: 245, iy: 325 },
+    { name: "Lighthouse", raid: 40, typical: 30, level: 35, ix: 120, iy: 450 },
+    { name: "Reserve", raid: 40, typical: 27, level: 35, ix: 360, iy: 410 },
+    { name: "Ground Zero", raid: 35, typical: 35, level: 20, ix: 760, iy: 735 },
+    { name: "Shoreline", raid: 45, typical: 35, level: 25, ix: 220, iy: 300, flip: true },
+    { name: "Streets of Tarkov", raid: 50, typical: 50, level: 40, ix: 670, iy: 620 },
+    { name: "Woods", raid: 40, typical: 25, level: 15, ix: 460, iy: 660 },
+    // Manimal-Icebreaker's db/base.json. It always plays at its pinned hour, so it gets one slot and no forecast.
+    { name: "Icebreaker", raid: 50, typical: 50, level: 60, indoor: true, oneSlot: true, ix: 91, iy: 747 }
+  ].map(at);
+  var FOG = { "0.0013": 35, "0.0018": 6, "0.002": 4, "0.004": 3, "0.006": 1 };
+  var WIND = { "0": 6, "1": 3, "2": 2, "3": 1, "4": 1 };
+  var PRESETS = {
+    SUNNY:  { clouds: { "-1": 5, "-0.8": 2 }, rain: { "1": 1 }, ri: [0, 0], fog: { "0.0013": 30, "0.0018": 6, "0.002": 4, "0.004": 3, "0.006": 1 }, wind: WIND },
+    RAINY:  { clouds: { "0.7": 1, "0.9": 4, "1": 4, "1.2": 2 }, rain: { "2": 5, "3": 5, "4": 5, "5": 5 }, ri: [0.1, 1], fog: FOG, wind: { "0": 3, "1": 2, "2": 2, "3": 1, "4": 1 } },
+    CLOUDY: { clouds: { "0.1": 10, "0": 10, "0.15": 10, "0.4": 10, "1": 10 }, rain: { "1": 1 }, ri: [0, 1], fog: FOG, wind: WIND }
+  };
+  var PRESET_WEIGHTS = { SUNNY: 13, RAINY: 7, CLOUDY: 7 };
+  var PERIOD = { "15": 1, "30": 2 };
+  var ACCEL = 7, OFFSET_S = 3 * 3600, DAY_S = 86400, HALF_S = 12 * 3600;
+  var ICEBREAKER_HOUR = 23; // Manimal-Icebreaker Plugin.TodHour default
+
+  // ---- glyphs (24 x 24, stroked in currentColor) -----------------------------
+  var CLOUD = "M7.5 18h9.5a3.6 3.6 0 0 0 .4-7.2 5.2 5.2 0 0 0-10-1.3A4.3 4.3 0 0 0 7.5 18z";
+  function rays(cx, cy, r1, r2) {
+    var s = "";
+    for (var a = 0; a < 360; a += 45) {
+      var c = Math.cos(a * Math.PI / 180), n = Math.sin(a * Math.PI / 180);
+      s += "<line x1=\"" + (cx + c * r1).toFixed(2) + "\" y1=\"" + (cy + n * r1).toFixed(2) + "\" x2=\"" + (cx + c * r2).toFixed(2) + "\" y2=\"" + (cy + n * r2).toFixed(2) + "\"/>";
+    }
+    return s;
+  }
+  function cloud(tf, extra) { return "<path d=\"" + CLOUD + "\"" + (tf ? " transform=\"" + tf + "\"" : "") + (extra || " fill=\"var(--gbg)\"") + "/>"; }
+  function flakes(pts, r) {
+    return pts.map(function (p) {
+      var s = "";
+      for (var a = 0; a < 180; a += 60) {
+        var dx = Math.cos(a * Math.PI / 180) * r, dy = Math.sin(a * Math.PI / 180) * r;
+        s += "<line x1=\"" + (p[0] - dx).toFixed(2) + "\" y1=\"" + (p[1] - dy).toFixed(2) + "\" x2=\"" + (p[0] + dx).toFixed(2) + "\" y2=\"" + (p[1] + dy).toFixed(2) + "\"/>";
+      }
+      return s;
+    }).join("");
+  }
+  function drops(pts) { return pts.map(function (p) { return "<line x1=\"" + p[0] + "\" y1=\"" + p[1] + "\" x2=\"" + (p[0] - 1.4) + "\" y2=\"" + (p[1] + 3.2) + "\"/>"; }).join(""); }
+  var MOON = "M19 14.8A7.5 7.5 0 1 1 9.2 5a6 6 0 0 0 9.8 9.8z";
+  var GLYPHS = {
+    clear: function (night) { return night ? "<path d=\"" + MOON + "\"/>" : "<circle cx=\"12\" cy=\"12\" r=\"4.2\"/>" + rays(12, 12, 6.8, 9.4); },
+    partly: function (night) {
+      return (night ? "<path d=\"M13.6 10.2A5.2 5.2 0 1 1 7.3 3.9a4.1 4.1 0 0 0 6.3 6.3z\"/>" : "<circle cx=\"8.5\" cy=\"8.5\" r=\"3\"/>" + rays(8.5, 8.5, 4.9, 6.7)) + cloud("translate(4.2 3.6) scale(.82)");
+    },
+    overcast: function () { return cloud("translate(-2.2 -3.4) scale(.8)", " fill=\"none\" opacity=\".55\"") + cloud("translate(1.6 1.4) scale(.9)"); },
+    storm: function () { return cloud("translate(-2.2 -3.4) scale(.8)", " fill=\"currentColor\" fill-opacity=\".25\" opacity=\".7\"") + cloud("translate(1.6 1.4) scale(.9)", " fill=\"currentColor\" fill-opacity=\".45\""); },
+    lightrain: function () { return cloud("translate(0 -4.5)") + drops([[10, 16.5], [15, 16.5]]); },
+    rain: function () { return cloud("translate(0 -4.5)") + drops([[8.5, 16.5], [12.5, 16.5], [16.5, 16.5]]); },
+    heavy: function () { return cloud("translate(0 -5)", " fill=\"currentColor\" fill-opacity=\".3\"") + drops([[8, 15], [12, 15], [16, 15], [10, 19.5], [14, 19.5]]); },
+    lightsnow: function () { return cloud("translate(0 -4.5)") + flakes([[9.5, 18.2], [15, 18.2]], 1.7); },
+    snow: function () { return cloud("translate(0 -4.5)") + flakes([[8, 17.6], [12.5, 19.8], [17, 17.6]], 1.6); },
+    heavysnow: function () { return cloud("translate(0 -5)", " fill=\"currentColor\" fill-opacity=\".3\"") + flakes([[7.5, 16], [12, 16], [16.5, 16], [9.8, 20.4], [14.2, 20.4]], 1.4); },
+    fog: function () { return "<path d=\"M4 9h16M3 13h12M6 17h14\"/>"; },
+    densefog: function () { return "<path d=\"M3 6.5h18M4 10.5h15M3 14.5h18M5 18.5h14\" stroke-width=\"2.2\"/>"; },
+    calm: function () { return "<path d=\"M4 12h16\"/><circle cx=\"4\" cy=\"12\" r=\".6\"/><circle cx=\"20\" cy=\"12\" r=\".6\"/>"; },
+    breezy: function () { return "<path d=\"M3 10h11a2.5 2.5 0 1 0-2.5-2.5M3 15h13a2.6 2.6 0 1 1-2.6 2.6\"/>"; },
+    wind: function () { return "<path d=\"M3 8h10a2.5 2.5 0 1 0-2.5-2.5M3 12h15a2.8 2.8 0 1 1-2.8 2.8M3 16h8\"/>"; },
+    sun: function () { return "<circle cx=\"12\" cy=\"12\" r=\"4.2\"/>" + rays(12, 12, 6.8, 9.4); },
+    moon: function () { return "<path d=\"" + MOON + "\"/>"; }
+  };
+  function glyph(key, night) {
+    if (!key || !GLYPHS[key]) return "";
+    return "<svg class=\"gl g-" + key + (night ? " g-night" : "") + "\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">" + GLYPHS[key](night) + "</svg>";
+  }
+
+  // ---- Tarkov clock (WeatherHelper.GetInRaidTime, without the % 24h) ------
+  function tarkovAbs(realMs) { return OFFSET_S + (realMs / 1000) * ACCEL; }
+  function dayPart(tSec) { return ((Math.floor(tSec) % DAY_S) + DAY_S) % DAY_S; }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function hhmm(tSec) { var s = dayPart(tSec); return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor((s % 3600) / 60)); }
+  function hhmmss(tSec) { var s = dayPart(tSec); return hhmm(tSec) + ":" + pad(s % 60); }
+  function isNight(tSec) { var h = Math.floor(dayPart(tSec) / 3600); return h > 21 || h < 5; }
+
+  // ---- the weather field ------------------------------------------------------
+  // Weather is a field over the region (the 600 x 400 schematic): rain cells and fog banks spawn upwind,
+  // drift with a slowly turning wind, and grow and fade. Everything derives from one seed, so it is
+  // deterministic: the same seed always gives the same storms at the same place and time.
+  var W = 600, H = 400, STEP = 14 * 60; // a sample every 14 in-game minutes = two real minutes
+  function rng(seed) {
+    return function () {
+      seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function mix(a, b) { var h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b | 0) + 0x7f4a7c15, 0xc2b2ae35); return h ^ (h >>> 13); }
+  function newSeed() { return (Math.random() * 0x7fffffff) | 0; }
+
+  // Wind: direction (radians, the way storms drift) turns over days; strength 0..1 rises and falls over hours.
+  function windAt(t) {
+    var s = (state.seed % 997) / 997 * Math.PI * 2;
+    return { dir: s + 0.9 * Math.sin(t / 150000 + s), str: 0.5 + 0.5 * Math.sin(t / 47000 + s * 1.7) };
+  }
+
+  // ---- weather patterns ----
+  // Every 8 in-game hours (about 69 real minutes) the region rolls a pattern that sets what kind of
+  // weather forms: long stretches of rain, settled fine weather, fog along the coast, a storm front.
+  // Weather already in the sky carries over, so patterns hand over gradually rather than switching.
+  var PERIOD_S = 8 * 3600;
+  var PATTERNS = {
+    fair:      { name: "Fair weather",   weight: 30, showers: 0.06, fronts: 0,    fog: 0.5, clouds: -0.75 },
+    unsettled: { name: "Unsettled",      weight: 28, showers: 0.85, fronts: 0.14, fog: 1,   clouds: 0.1 },
+    longrain:  { name: "Prolonged rain", weight: 14, showers: 0.35, fronts: 0,    fog: 1,   clouds: 0.7, shield: true },
+    coastfog:  { name: "Coastal fog",    weight: 14, showers: 0.12, fronts: 0,    fog: 1,   clouds: -0.3, coast: true },
+    storms:    { name: "Storm front",    weight: 10, showers: 0.55, fronts: 0,    fog: 0.3, clouds: 0.45, squall: true }
+  };
+  // The coast: Lighthouse, Shoreline and Icebreaker's water sit on the region's western edge.
+  var COAST_X = 88, COAST_Y = 215;
+  var patternCache = {};
+  function patternOfPeriod(p) {
+    var key = state.seed + ":" + p;
+    if (patternCache[key]) return patternCache[key];
+    var r = rng(mix(state.seed ^ 0x5bd1e995, p)), total = 0, k;
+    for (k in PATTERNS) total += PATTERNS[k].weight;
+    var x = r() * total;
+    for (k in PATTERNS) { x -= PATTERNS[k].weight; if (x < 0) break; }
+    return (patternCache[key] = k);
+  }
+  /** The pattern at time t, with when it began and when it ends (runs of the same pattern merged). */
+  function patternAt(t) {
+    var p = Math.floor(t / PERIOD_S), key = patternOfPeriod(p), a = p, b = p;
+    while (a > p - 6 && patternOfPeriod(a - 1) === key) a--;
+    while (b < p + 6 && patternOfPeriod(b + 1) === key) b++;
+    return { key: key, def: PATTERNS[key], start: a * PERIOD_S, end: (b + 1) * PERIOD_S };
+  }
+  /** Background cloudiness eases from one pattern's level to the next over the first hour of a period. */
+  function patternClouds(t) {
+    var p = Math.floor(t / PERIOD_S), cur = PATTERNS[patternOfPeriod(p)].clouds, prev = PATTERNS[patternOfPeriod(p - 1)].clouds;
+    return prev + (cur - prev) * smoothstep(0, 3600, t - p * PERIOD_S);
+  }
+
+  // ---- storm shapes ----
+  // Showers are small lumpy cells; fronts and squall lines are long curved bands lying across the wind,
+  // sharp at the leading edge with rain trailing behind; a prolonged-rain shield is a wide, slow band;
+  // fog banks drift slowly, and coastal fog lies along the coast. Noise then roughens every edge.
+  var cellCache = {};
+  var SPEED = (W * 1.1) / (9 * 3600); // a typical cell crosses the region in about nine in-game hours
+  var KINDS = {
+    shower:   { life: [2, 5],  speed: 1,    width: [22, 50],   length: [1.2, 2.2], peak: [0.35, 1],    trail: 1.6, curve: 0,      plateau: false },
+    front:    { life: [5, 9],  speed: 0.9,  width: [28, 48],   length: [260, 480], peak: [0.5, 0.9],   trail: 2.4, curve: 0.0012, plateau: false },
+    squall:   { life: [7, 10], speed: 1.35, width: [20, 32],   length: [420, 650], peak: [0.85, 1],    trail: 2.8, curve: 0.0016, plateau: true },
+    shield:   { life: [11, 11],speed: 0.25, width: [150, 210], length: [620, 820], peak: [0.36, 0.5],  trail: 1.4, curve: 0.0003, plateau: true },
+    fog:      { life: [4, 9],  speed: 0.25, width: [80, 130],  length: [140, 260], peak: [0.6, 1],     trail: 1.2, curve: 0,      plateau: false },
+    coastfog: { life: [10, 10],speed: 0.02, width: [48, 66],   length: [440, 500], peak: [0.85, 1],    trail: 1.3, curve: 0,      plateau: true }
+  };
+  function span(r, range) { return range[0] + (range[1] - range[0]) * r(); }
+  function makeCell(r, t0, kind, atStart) {
+    // Pattern systems are born exactly at their hour: that hour is when activeCells starts looking at them,
+    // so an earlier birth would make them pop in part-grown.
+    var k = KINDS[kind], birth = atStart ? t0 : t0 + r() * 3600, life = span(r, k.life) * 3600;
+    var w = windAt(birth), speed = k.speed * (0.75 + 0.5 * r()) * SPEED, width = span(r, k.width);
+    var length = kind === "shower" ? width * span(r, k.length) : span(r, k.length);
+    var ang = kind === "shower" ? w.dir + (r() - 0.5) * 1.4 : w.dir;
+    var c = {
+      kind: kind, fog: kind === "fog" || kind === "coastfog", birth: birth, life: life,
+      vx: Math.cos(w.dir) * speed, vy: Math.sin(w.dir) * speed, ang: ang,
+      width: width, length: length, peak: span(r, k.peak), trail: k.trail,
+      curve: k.curve * (r() < 0.5 ? -1 : 1), plateau: k.plateau
+    };
+    if (kind === "coastfog") {
+      // Lies along the coast (north-south), drifting only a little on or off shore.
+      c.ang = 0; c.vx = (r() - 0.5) * 0.0006; c.vy = 0;
+      c.x0 = COAST_X + (r() - 0.5) * 24; c.y0 = COAST_Y + (r() - 0.5) * 40;
+    } else if (kind === "shield") {
+      // Arrives over the region and lingers: starts a little upwind of the middle.
+      c.x0 = W / 2 - Math.cos(w.dir) * 120 + (r() - 0.5) * 120;
+      c.y0 = H / 2 - Math.sin(w.dir) * 120 + (r() - 0.5) * 80;
+    } else {
+      // Start upwind and spread across the wind, so most cells cross part of the region.
+      var travel = speed * life * (kind === "squall" || kind === "front" ? 0.5 : 0.3 + 0.4 * r()), side = (r() - 0.5) * 520;
+      c.x0 = W / 2 - Math.cos(w.dir) * travel - Math.sin(w.dir) * side;
+      c.y0 = H / 2 - Math.sin(w.dir) * travel + Math.cos(w.dir) * side;
+    }
+    return c;
+  }
+  function cellsForHour(h) {
+    var key = state.seed + ":" + h;
+    if (cellCache[key]) return cellCache[key];
+    var r = rng(mix(state.seed, h)), out = [], hourOfDay = ((h % 24) + 24) % 24;
+    var t0 = h * 3600, pat = patternAt(t0 + 1800).def, periodStart = t0 % PERIOD_S === 0;
+    if (r() < pat.showers) out.push(makeCell(r, t0, "shower"));
+    if (r() < pat.showers * 0.4) out.push(makeCell(r, t0, "shower"));
+    if (r() < pat.fronts) out.push(makeCell(r, t0, "front"));
+    if (periodStart && pat.shield) out.push(makeCell(r, t0, "shield", true));
+    if (periodStart && pat.squall) out.push(makeCell(r, t0, "squall", true));
+    if (periodStart && pat.coast) out.push(makeCell(r, t0, "coastfog", true));
+    if (r() < (hourOfDay >= 1 && hourOfDay <= 8 ? 0.3 : 0.05) * pat.fog) out.push(makeCell(r, t0, "fog"));
+    return (cellCache[key] = out);
+  }
+  function activeCells(t) {
+    var h = Math.floor(t / 3600), out = [];
+    for (var k = h - 12; k <= h; k++) cellsForHour(k).forEach(function (c) { if (t >= c.birth && t <= c.birth + c.life) out.push(c); });
+    return out;
+  }
+
+  // ---- noise ----
+  // Smooth 3-D value noise (x, y, time) from the seed. Warps the coordinates storms are measured in, and
+  // gives rain its patchy, cellular texture, which slowly evolves.
+  function lattice(x, y, z) { return (mix(mix(mix(state.seed, x), y), z) >>> 0) / 4294967296; }
+  function vnoise(x, y, z) {
+    var xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+    function L(a, b, f) { return a + (b - a) * f; }
+    return L(
+      L(L(lattice(xi, yi, zi), lattice(xi + 1, yi, zi), u), L(lattice(xi, yi + 1, zi), lattice(xi + 1, yi + 1, zi), u), v),
+      L(L(lattice(xi, yi, zi + 1), lattice(xi + 1, yi, zi + 1), u), L(lattice(xi, yi + 1, zi + 1), lattice(xi + 1, yi + 1, zi + 1), u), v), w);
+  }
+  function fbm(x, y, z) {
+    var a = 0.5, sum = 0, norm = 0;
+    for (var o = 0; o < 4; o++) { sum += a * vnoise(x, y, z); norm += a; x *= 2.03; y *= 2.03; z *= 1.6; a *= 0.5; }
+    return sum / norm;
+  }
+
+  function cellValue(c, x, y, t) {
+    var age = (t - c.birth) / c.life;
+    if (age < 0 || age > 1) return 0;
+    var env = c.plateau ? smoothstep(0, 0.12, age) * (1 - smoothstep(0.85, 1, age)) : Math.pow(Math.sin(Math.PI * age), 0.7);
+    var dx = x - (c.x0 + c.vx * (t - c.birth)), dy = y - (c.y0 + c.vy * (t - c.birth));
+    var ca = Math.cos(c.ang), sa = Math.sin(c.ang);
+    var along = dx * ca + dy * sa, across = -dx * sa + dy * ca;
+    along -= c.curve * across * across;             // bows the band
+    var w = along > 0 ? c.width : c.width * c.trail; // sharp leading edge, trailing rain behind
+    return c.peak * env * Math.exp(-1.5 * (along * along / (w * w) + across * across / (c.length * c.length)));
+  }
+
+  // Rain and fog strength (0..1) at a point. Overlapping cells combine like probabilities; the point is
+  // first nudged by noise (ragged edges), and rain is then broken up by a noise texture (cells and gaps).
+  function fieldAt(cells, x, y, t) {
+    var z = t / 1800;
+    var wx = x + 36 * (vnoise(x / 70, y / 70, z) - 0.5), wy = y + 36 * (vnoise(x / 70 + 31.7, y / 70 + 17.3, z) - 0.5);
+    var dry = 1, clear = 1;
+    for (var i = 0; i < cells.length; i++) {
+      var v = cellValue(cells[i], wx, wy, t);
+      if (cells[i].fog) clear *= 1 - v; else dry *= 1 - v;
+    }
+    var rain = 1 - dry, fog = 1 - clear;
+    // Rain breaks up into cells and streaks: a finer texture with more contrast, so a storm has bright
+    // cores and gaps inside it rather than one smooth blob.
+    if (rain > 0.01) {
+      var tex = fbm(wx / 32, wy / 32, z * 0.8);
+      rain = Math.min(1, rain * Math.max(0, 0.05 + 1.55 * tex * tex + 0.25 * tex));
+    }
+    if (fog > 0.01) fog = Math.min(1, fog * (0.75 + 0.4 * vnoise(wx / 90 + 5.1, wy / 90 + 9.3, z * 0.5)));
+    return { rain: rain, fog: fog };
+  }
+
+  // Levels with a little hysteresis: going up needs the value a margin past the threshold, coming down a
+  // margin under it, so a cell's edge drifting over a location doesn't flicker the forecast.
+  var RAIN_STEPS = [0.12, 0.3, 0.55, 0.8], FOG_STEPS = [0.38, 0.67], MARGIN = 0.03;
+  function level(value, steps, prev) {
+    var up = 0, down = 0;
+    steps.forEach(function (th) { if (value >= th + MARGIN) up++; if (value >= th - MARGIN) down++; });
+    return prev == null ? steps.filter(function (th) { return value >= th; }).length : Math.min(Math.max(prev, up), down);
+  }
+
+  // A location's schedule: the field sampled at its marker. These samples are what the server would send
+  // as the raid's weather nodes, so the card, the radar and the raid read the same numbers.
+  function blocksFor(map, from, to) {
+    var out = [], t = Math.floor(from / STEP) * STEP - 6 * STEP, rl = null, fl = null;
+    for (; t < to; t += STEP) {
+      var f = fieldAt(activeCells(t), map.x, map.y, t), w = windAt(t);
+      rl = level(f.rain, RAIN_STEPS, rl);
+      fl = level(f.fog, FOG_STEPS, fl);
+      // Background cloud follows the pattern (fine weather clear, prolonged rain grey), with a little drift.
+      var base = Math.max(-1, Math.min(1, patternClouds(t) + 0.25 * Math.sin(t / 9000 + map.x / 90)));
+      var clouds = rl ? Math.min(1.2, 0.85 + 0.4 * f.rain) : Math.min(1, base + 1.6 * f.rain);
+      if (t + STEP <= from) continue; // warm-up samples only seed the hysteresis
+      out.push({
+        start: t, end: t + STEP,
+        clouds: Math.round(clouds * 100) / 100,
+        rain: rl ? rl + 1 : 1, rainIntensity: Math.round(f.rain * 100) / 100,
+        fog: [0.0013, 0.0045, 0.0065][fl],
+        wind: Math.min(4, Math.round(w.str * 3 + (f.rain > 0.5 ? 1 : 0)))
+      });
+    }
+    return out;
+  }
+
+  // ---- numbers to words ---------------------------------------------------
+  function read(b) {
+    var sky = b.clouds <= -0.8 ? ["Clear", "clear"] : b.clouds <= 0.4 ? ["Partly cloudy", "partly"] : b.clouds < 1.1 ? ["Overcast", "overcast"] : ["Stormy skies", "storm"];
+    var label = sky[0], cat = sky[1], g = sky[1], wet = false, foggy = b.fog >= 0.004;
+    var fogLabel = b.fog >= 0.006 ? "Dense fog" : "Fog";
+    if (b.rain >= 2) {
+      wet = true;
+      if (state.winter) { label = b.rain === 2 ? "Light snow" : b.rain === 3 ? "Snow" : "Heavy snow"; cat = "snow"; g = b.rain === 2 ? "lightsnow" : b.rain === 3 ? "snow" : "heavysnow"; }
+      else { label = b.rain === 2 ? "Light rain" : b.rain === 3 ? "Rain" : "Heavy rain"; cat = b.rain >= 4 ? "heavy" : "rain"; g = b.rain === 2 ? "lightrain" : b.rain === 3 ? "rain" : "heavy"; }
+      // Fog under precipitation is still worth knowing about.
+      if (foggy) label += " and " + lower(fogLabel);
+    } else if (foggy) { label = fogLabel; cat = "fog"; g = b.fog >= 0.006 ? "densefog" : "fog"; }
+    var wind = b.wind <= 1 ? "Calm" : b.wind === 2 ? "Breezy" : "Strong wind";
+    var windG = b.wind <= 1 ? "calm" : b.wind === 2 ? "breezy" : "wind";
+    return { label: label, cat: cat, g: g, wet: wet, foggy: foggy, wind: wind, windG: windG, sky: sky[1] };
+  }
+  function lower(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
+
+  // Blocks a raid passes through, merged where they read the same. Minutes are raid (real) minutes.
+  function raidSegments(blocks, t0, raidMin) {
+    var t1 = t0 + raidMin * 60 * ACCEL, segs = [];
+    blocks.forEach(function (b, i) {
+      if (b.end <= t0 || b.start >= t1) return;
+      var r = read(b), from = Math.max(0, (b.start - t0) / 60 / ACCEL), last = segs[segs.length - 1];
+      if (last && last.r.label === r.label) { last.idx.push(i); return; }
+      segs.push({ r: r, from: from, idx: [i], block: b });
+    });
+    return segs;
+  }
+
+  function changePhrase(prev, cur, when) {
+    if (cur.wet && !prev.wet) return lower(cur.label) + " " + when.from;
+    if (prev.wet && !cur.wet) return (state.winter ? "snow stops " : cur.sky === "clear" || cur.sky === "partly" ? "clearing " : "dry ") + when.by;
+    if (cur.foggy && !prev.foggy) return "fog rolling in " + when.at;
+    if (prev.foggy && !cur.foggy) return "fog lifting " + when.at;
+    return lower(cur.label) + " " + when.from;
+  }
+  // A change in the first couple of minutes reads as "within minutes" rather than a rounded-up "~5 min".
+  function whenWords(m) {
+    if (m < 2.5) return { from: "within minutes", by: "within minutes", at: "within minutes" };
+    var mm = "~" + Math.round(m / 5) * 5 + " min";
+    return { from: "from " + mm, by: "by " + mm, at: mm };
+  }
+
+  // Headline plus up to two change lines. When more changes follow than fit, a last line says so,
+  // so the card never implies the weather settles when it doesn't.
+  function forecast(blocks, t0, map) {
+    var segs = raidSegments(blocks, t0, map.raid);
+    if (!segs.length) return { main: { text: "No forecast" }, lines: [], segs: segs };
+    var first = segs[0].r, lines = [], night0 = isNight(t0);
+    if (segs.length === 1) {
+      return { main: { text: first.label + " all raid", g: first.g, night: night0 }, lines: [{ text: first.wind, g: first.windG }], segs: segs };
+    }
+    // A step that is gone before the card could name a different time for the next one (under 2.5 raid
+    // minutes, or rounding to the same ~5 min) is folded into the change after it, so the card reads
+    // "Heavy rain from ~5 min" rather than "Rain from ~5 min, Heavy rain from ~5 min".
+    function slot5(m) { return m < 2.5 ? 0 : Math.round(m / 5); }
+    var steps = [segs[0]];
+    for (var s = 1; s < segs.length; s++) {
+      var next = segs[s + 1];
+      if (next && (next.from - segs[s].from < 2.5 || slot5(next.from) === slot5(segs[s].from))) continue;
+      steps.push(segs[s]);
+    }
+    for (var k = 1; k < steps.length && k <= 2; k++) {
+      var m = steps[k].from, phrase = changePhrase(steps[k - 1].r, steps[k].r, whenWords(m));
+      lines.push({ text: phrase.charAt(0).toUpperCase() + phrase.slice(1), g: steps[k].r.g, night: isNight(t0 + m * 60 * ACCEL) });
+    }
+    if (steps.length > 3) lines.push({ text: "More changes after ~" + Math.round(steps[3].from / 5) * 5 + " min", more: true });
+    return { main: { text: first.label, g: first.g, night: night0 }, lines: lines, segs: segs };
+  }
+
+  // ---- state ----------------------------------------------------------------
+  var el = function (id) { return document.getElementById(id); };
+  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0, playFrom: 0, scrub: 0, opacity: 1, territories: false };
+
+  function nowReal() { return Date.now() + state.ahead * 60e3; }
+  function slotTimes() {
+    if (state.map.oneSlot) return [ICEBREAKER_HOUR * 3600];
+    var t = tarkovAbs(nowReal());
+    return [t, t + HALF_S];
+  }
+  // The game clock keeps running while the raid loads. With the lock on, the server serves weather from the moment the slot was confirmed.
+  function raidStart(t) { return state.lock ? t : t + state.load * 60 * ACCEL; }
+  function summary(fc) { return [fc.main.text].concat(fc.lines.map(function (l) { return lower(l.text); })).join(", "); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]; }); }
+
+  // ---- the game screen ------------------------------------------------------
+  function buildMarkers() {
+    el("locs").innerHTML = MAPS.map(function (m, i) {
+      return "<button type=\"button\" class=\"loc" + (m.flip ? " flip" : "") + "\" data-i=\"" + i + "\" aria-pressed=\"" + (m === state.map) + "\" style=\"left:" + (m.x / 6) + "%;top:" + (m.y / 4) + "%\"><i></i><b>" + esc(m.name) + "</b></button>";
+    }).join("");
+  }
+  function markSelected() {
+    Array.prototype.forEach.call(el("locs").children, function (b) { b.setAttribute("aria-pressed", String(MAPS[Number(b.dataset.i)] === state.map)); });
+  }
+
+  function renderScreen(cards) {
+    var m = state.map, times = slotTimes();
+    el("locName").textContent = m.name;
+    // The weather pattern for the selected slot, and how long it lasts: a heads-up for a long rain or fog.
+    var pat = patternAt(times[state.slot] != null ? times[state.slot] : times[0]);
+    el("facts").innerHTML = "<dt>Raid time</dt><dd>" + m.raid + " min</dd><dt>Typical raid</dt><dd>~" + m.typical + " min</dd><dt>Average level</dt><dd>" + m.level + "</dd>" +
+      (m.indoor ? "" : "<dt>Weather pattern</dt><dd>" + esc(pat.def.name) + " until ~" + hhmm(pat.end) + "</dd>");
+    el("slotsLabel").textContent = m.indoor ? "Time" : "Time and weather";
+    el("slotHint").textContent = m.indoor ? "" : "Forecast for the whole raid. Weather is set when you press Next.";
+
+    // Keep keyboard focus on the same slot across the periodic refresh.
+    var focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.slot : undefined;
+    var slots = el("slots");
+    slots.classList.toggle("one", times.length === 1);
+    slots.innerHTML = times.map(function (t, i) {
+      var night = m.oneSlot || isNight(t), fc = cards[i];
+      var forecastHtml = m.indoor ? "" : "<span class=\"slot-rule\"></span>" +
+        "<span class=\"fc-main\">" + glyph(fc.main.g, fc.main.night) + esc(fc.main.text) + "</span>" +
+        fc.lines.map(function (l) { return "<span class=\"fc-line" + (l.more ? " more" : "") + "\">" + glyph(l.g, l.night) + esc(l.text) + "</span>"; }).join("");
+      return "<button type=\"button\" class=\"slot\" data-slot=\"" + i + "\" data-t=\"" + t + "\" aria-pressed=\"" + (state.slot === i) + "\">" +
+        "<span class=\"slot-time\">" + (m.oneSlot ? hhmm(t) : hhmmss(t)) + "</span>" +
+        "<span class=\"slot-phase\">" + glyph(night ? "moon" : "sun") + (night ? "Night" : "Day") + "</span>" + forecastHtml + "</button>";
+    }).join("");
+    if (focused !== undefined) { var again = slots.querySelector("[data-slot=\"" + focused + "\"]"); if (again) again.focus(); }
+  }
+  // Seconds tick between full refreshes, the way the game's clock does.
+  function tickClocks() {
+    if (state.map.oneSlot) return;
+    var times = slotTimes();
+    Array.prototype.forEach.call(el("slots").querySelectorAll(".slot-time"), function (s, i) { s.textContent = hhmmss(times[i]); });
+  }
+
+  // ---- simulation views ------------------------------------------------------
+  function renderVerdicts(cards, raids) {
+    if (state.map.indoor) { el("verdicts").innerHTML = ""; return; }
+    var times = slotTimes();
+    el("verdicts").innerHTML = times.map(function (t, i) {
+      var ok = summary(cards[i]) === summary(raids[i]);
+      return "<div>" + (ok ? "<span class=\"ok\">Match.</span> " : "<span class=\"bad\">Mismatch.</span> ") + hhmm(t) + " slot: " +
+        (ok ? "the raid gets what the card says." : "card says “" + esc(summary(cards[i])) + "”, raid gets “" + esc(summary(raids[i])) + "”.") + "</div>";
+    }).join("");
+  }
+
+  function renderTimeline(raids) {
+    var m = state.map, box = el("tlBox"), times = slotTimes().map(raidStart);
+    if (m.indoor) {
+      box.innerHTML = "<p class=\"note\">" + esc(m.name) + " has no forecast. " +
+        (m.oneSlot ? "The mod trims it to a single 23:00 slot, the hour Icebreaker always plays at." : "Its time slots show without one.") + "</p>";
+      return;
+    }
+    var html = "<div class=\"timeline-wrap\"><div class=\"timeline\">";
+    raids.forEach(function (fc, i) {
+      html += "<div class=\"tl-row\"><div class=\"tl-label\">" + (i === 0 ? "Left slot" : "Right slot") + "<b>" + (state.lock ? "" : "from ") + hhmm(times[i]) + "</b></div><div class=\"track\">";
+      fc.segs.forEach(function (s, k) {
+        var to = k + 1 < fc.segs.length ? fc.segs[k + 1].from : m.raid;
+        var w = Math.max(0, (Math.min(to, m.raid) - s.from) / m.raid * 100);
+        html += "<div class=\"blk c-" + s.r.cat + "\" style=\"width:" + w + "%\" title=\"" + esc(s.r.label) + "\">" + glyph(s.r.g, isNight(times[i] + s.from * 60 * ACCEL)) + esc(s.r.label) + "</div>";
+      });
+      html += "</div></div>";
+    });
+    html += "<div class=\"ticks\">";
+    var step = m.raid <= 25 ? 5 : 10;
+    for (var t = 0; t <= m.raid; t += step) html += "<span style=\"left:" + (t / m.raid * 100) + "%\">" + t + "</span>";
+    if (m.raid % step) html += "<span style=\"left:100%\">" + m.raid + "</span>";
+    html += "</div></div></div><div class=\"legend\">" + [["clear", "Clear"], ["partly", "Partly cloudy"], ["overcast", "Overcast"], ["storm", "Stormy"], ["rain", "Rain"], ["heavy", "Heavy rain"], ["snow", "Snow"], ["fog", "Fog"]]
+      .map(function (x) { return "<span><i class=\"c-" + x[0] + "\"></i>" + x[1] + "</span>"; }).join("") + "</div>";
+    box.innerHTML = html;
+  }
+
+  function render() {
+    var times = slotTimes(), m = state.map;
+    // This location's samples, covering both slots' raids plus loading.
+    state.blocks = m.indoor ? [] : blocksFor(m, Math.min.apply(null, times) - STEP, Math.max.apply(null, times) + (m.raid + state.load + 5) * 60 * ACCEL);
+    // What the card says, and what the raid actually gets once loading is over.
+    var cards = times.map(function (t) { return forecast(state.blocks, t, m); });
+    var raids = times.map(function (t) { return forecast(state.blocks, raidStart(t), m); });
+    el("aheadLabel").textContent = state.ahead ? "+" + Math.floor(state.ahead / 60) + "h " + (state.ahead % 60) + "m real  (+" + Math.round(state.ahead * ACCEL / 60) + "h Tarkov)" : "Now";
+    el("loadLabel").textContent = state.load + " real min = " + Math.round(state.load * ACCEL) + " in-game min";
+    renderScreen(cards);
+    renderVerdicts(cards, raids);
+    renderTimeline(raids);
+    radarDirty = true;
+  }
+
+  // ---- radar ------------------------------------------------------------------
+  // Draws the same field the locations sample, at the radar's time: the selected slot's start, or
+  // playing through that slot's raid when "Play raid" is on.
+  // The weather is sampled on a grid (FW x FH) and then interpolated smoothly (Catmull-Rom) up to the
+  // drawing resolution (GW x GH). Colour and outlines are worked out per drawn pixel, so edges and the
+  // fine level outlines stay crisp and smooth instead of being enlarged blocks.
+  var PLAY_SECONDS = 8, FW = 161, FH = 108, GW = 600, GH = 400;
+  var fieldRain = new Float32Array(FW * FH), fieldFog = new Float32Array(FW * FH);
+  // Interpolation runs rows first, then columns: these hold the grid stretched to full width.
+  var wideRain = new Float32Array(FH * GW), wideFog = new Float32Array(FH * GW);
+  function taps(n, size) {
+    // For each output column/row: the four grid indices and Catmull-Rom weights to blend them with.
+    var idx = new Int32Array(n * 4), wt = new Float32Array(n * 4);
+    for (var p = 0; p < n; p++) {
+      var g = p * (size - 1) / (n - 1), i0 = Math.floor(g), f = g - i0, f2 = f * f, f3 = f2 * f;
+      var w = [-0.5 * f3 + f2 - 0.5 * f, 1.5 * f3 - 2.5 * f2 + 1, -1.5 * f3 + 2 * f2 + 0.5 * f, 0.5 * f3 - 0.5 * f2];
+      for (var q = 0; q < 4; q++) { idx[p * 4 + q] = Math.min(size - 1, Math.max(0, i0 - 1 + q)); wt[p * 4 + q] = w[q]; }
+    }
+    return { idx: idx, wt: wt };
+  }
+  var TX = taps(GW, FW), TY = taps(GH, FH);
+  var radar = el("radar"), rctx = radar.getContext("2d");
+  var buf = document.createElement("canvas"); buf.width = GW; buf.height = GH;
+  var bctx = buf.getContext("2d"), img = bctx.createImageData(GW, GH);
+  var radarDirty = true, lastRadarT = null, lastPaint = 0;
+
+  // Radar colours in stepped bands, the way weather radar shows intensity: [from intensity, colour, opacity].
+  // Light rain is a faint wash so the map shows through; only the heavy cores, which are small, get strong.
+  var BANDS = {
+    rain: [[0.08, [118, 200, 110], 0.13], [0.16, [56, 168, 72], 0.18], [0.26, [28, 128, 52], 0.24], [0.38, [232, 214, 64], 0.32],
+           [0.52, [240, 150, 42], 0.4], [0.68, [222, 56, 44], 0.48], [0.84, [168, 24, 72], 0.56]],
+    snow: [[0.08, [150, 186, 232], 0.13], [0.16, [118, 160, 226], 0.18], [0.26, [86, 132, 214], 0.24], [0.38, [150, 200, 250], 0.32],
+           [0.52, [196, 224, 255], 0.4], [0.68, [230, 240, 255], 0.48], [0.84, [255, 255, 255], 0.56]]
+  };
+  function smoothstep(a, b, v) { var x = Math.min(1, Math.max(0, (v - a) / (b - a))); return x * x * (3 - 2 * x); }
+  // Colour and opacity for 1024 intensity steps. Each band begins at its threshold with a short smooth
+  // blend (antialiasing), so bands read as clean steps with soft edges, never as jagged pixels.
+  var lutCache = {};
+  function rampLut() {
+    var key = state.winter ? "snow" : "rain";
+    if (lutCache[key]) return lutCache[key];
+    var bands = BANDS[key], lut = new Float32Array(1024 * 4), aa = 0.009;
+    for (var v = 0; v < 1024; v++) {
+      var x = v / 1023, r = bands[0][1][0], g = bands[0][1][1], b = bands[0][1][2], a = 0;
+      for (var i = 0; i < bands.length; i++) {
+        var s = smoothstep(bands[i][0] - aa, bands[i][0] + aa, x);
+        r += (bands[i][1][0] - r) * s; g += (bands[i][1][1] - g) * s; b += (bands[i][1][2] - b) * s; a += (bands[i][2] - a) * s;
+      }
+      lut[v * 4] = r; lut[v * 4 + 1] = g; lut[v * 4 + 2] = b; lut[v * 4 + 3] = a;
+    }
+    return (lutCache[key] = lut);
+  }
+  function radarKey() {
+    var bands = BANDS[state.winter ? "snow" : "rain"];
+    el("radarKey").innerHTML = "<b id=\"radarPattern\" class=\"radar-pattern\"></b><span>" + (state.winter ? "Snow" : "Rain") + "</span>" +
+      bands.map(function (bd) { return "<i style=\"background:rgb(" + bd[1].join(",") + ")\"></i>"; }).join("") +
+      "<span>Fog</span><i style=\"background:rgba(176,176,166,.55)\"></i>";
+  }
+
+  // The radar's position in the raid, 0 (start) to 1 (end). Play runs it once to the end and stops there;
+  // it never loops, so the picture never jumps back.
+  function radarTime() {
+    var times = slotTimes(), t0 = times[state.slot] != null ? times[state.slot] : times[0];
+    var span = state.map.indoor ? 40 : state.map.raid;
+    if (state.playing) {
+      state.scrub = Math.min(1, state.playFrom + (performance.now() - state.playStart) / 1000 / PLAY_SECONDS);
+      if (state.scrub >= 1) stopPlay();
+    }
+    return { t: t0 + state.scrub * span * 60 * ACCEL, minute: state.scrub * span, end: state.scrub >= 1 };
+  }
+  function stopPlay() {
+    state.playing = false;
+    el("radarPlay").setAttribute("aria-pressed", "false");
+    el("radarPlay").textContent = state.scrub >= 1 ? "Replay" : "Play raid";
+  }
+  function resetRadarTime() {
+    state.scrub = 0;
+    el("radarScrub").value = 0;
+    stopPlay();
+    radarDirty = true;
+  }
+  // Keeps the canvas at the screen's real pixel size, so the radar is sharp at any resolution and zoom.
+  function sizeRadar() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.max(1, Math.round((radar.clientWidth || W) * dpr)), h = Math.max(1, Math.round((radar.clientHeight || H) * dpr));
+    if (radar.width !== w || radar.height !== h) { radar.width = w; radar.height = h; }
+  }
+
+  function paintField(t) {
+    // 1. Sample the weather on the grid (the expensive part: storms and noise).
+    var cells = activeCells(t), d = img.data, n = 0;
+    for (var gj = 0; gj < FH; gj++) {
+      for (var gi = 0; gi < FW; gi++, n++) {
+        var f = fieldAt(cells, gi * W / (FW - 1), gj * H / (FH - 1), t);
+        fieldRain[n] = f.rain; fieldFog[n] = f.fog;
+      }
+    }
+    // 2. Every drawn pixel: interpolate the grid, then colour it. A light wash that follows the field
+    // continuously (at most about a third opaque, so the map art and any faction colours stay readable),
+    // a fine outline where intensity crosses each rain level, and a faint grey veil for fog.
+    var p, q, i, j, s;
+    for (j = 0; j < FH; j++) {
+      var src = j * FW, dst = j * GW;
+      for (i = 0; i < GW; i++) {
+        var xi = i * 4, r0 = 0, f0 = 0;
+        for (p = 0; p < 4; p++) { var w = TX.wt[xi + p], at = src + TX.idx[xi + p]; r0 += fieldRain[at] * w; f0 += fieldFog[at] * w; }
+        wideRain[dst + i] = r0; wideFog[dst + i] = f0;
+      }
+    }
+    var lut = rampLut();
+    for (j = 0; j < GH; j++) {
+      var yi = j * 4;
+      for (i = 0; i < GW; i++) {
+        var rain = 0, fog = 0;
+        for (q = 0; q < 4; q++) { var wy = TY.wt[yi + q], at2 = TY.idx[yi + q] * GW + i; rain += wideRain[at2] * wy; fog += wideFog[at2] * wy; }
+        var k = (j * GW + i) * 4;
+        if (rain < 0.06 && fog < 0.15) { d[k + 3] = 0; continue; }
+        rain = rain > 1 ? 1 : rain < 0 ? 0 : rain;
+        fog = fog > 1 ? 1 : fog < 0 ? 0 : fog;
+        var li = Math.round(rain * 1023) * 4, ra = lut[li + 3];
+        var fa = smoothstep(0.15, 0.6, fog) * 0.16 * (1 - ra);
+        var a = (ra + fa) * state.opacity;
+        if (a < 0.01) { d[k + 3] = 0; continue; }
+        var sum = ra + fa;
+        d[k] = (lut[li] * ra + 176 * fa) / sum; d[k + 1] = (lut[li + 1] * ra + 176 * fa) / sum; d[k + 2] = (lut[li + 2] * ra + 166 * fa) / sum;
+        d[k + 3] = (a > 1 ? 1 : a) * 255;
+      }
+    }
+    bctx.putImageData(img, 0, 0);
+  }
+
+  function frame(now) {
+    var rt = radarTime();
+    if (state.radarOn && (radarDirty || (rt.t !== lastRadarT && now - lastPaint > 90))) {
+      paintField(rt.t); lastRadarT = rt.t; lastPaint = now; radarDirty = false;
+    }
+    sizeRadar();
+    rctx.clearRect(0, 0, radar.width, radar.height);
+    if (state.radarOn) {
+      // Already drawn at full detail, so only scaled to the screen; no blur needed.
+      rctx.imageSmoothingEnabled = true;
+      rctx.imageSmoothingQuality = "high";
+      rctx.drawImage(buf, 0, 0, radar.width, radar.height);
+    }
+    if (state.playing) el("radarScrub").value = Math.round(state.scrub * 1000);
+    el("radarTime").textContent = state.radarOn
+      ? hhmm(rt.t) + (state.scrub > 0 ? "  +" + Math.floor(rt.minute) + " min" : "") + (rt.end ? " · raid end" : "")
+      : "";
+    var patName = patternAt(rt.t).def.name;
+    if (el("radarPattern").textContent !== patName) el("radarPattern").textContent = patName;
+    requestAnimationFrame(frame);
+  }
+
+  // ---- TushonkaTerritories' faction map --------------------------------------------
+  // Territories draws a Voronoi map under the location buttons: each location's cell in its holding
+  // faction's colour (TerritoryRenderer, placed as the first child of Content/Map/Image). The colours are
+  // from its data.json; who holds what here is only an example. The radar sits above it, translucent.
+  var FACTIONS = { scav: "#055e1e", raider: "#FA8014", rogue: "#4F7061", ruaf: "#011e09", untar: "#5b92e5", cultist: "#7D04D6", blackdiv: "#000000" };
+  var HOLDERS = { "Customs": "scav", "Factory": "scav", "Interchange": "raider", "The Lab": "raider", "Labyrinth": "cultist", "Lighthouse": "rogue",
+    "Reserve": "ruaf", "Ground Zero": "untar", "Shoreline": "scav", "Streets of Tarkov": "blackdiv", "Woods": "rogue" };
+  function hexRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  function paintTerritory() {
+    var c = el("territory"), dpr = window.devicePixelRatio || 1, tw = 300, th = 200;
+    c.width = Math.max(1, Math.round((c.clientWidth || W) * dpr));
+    c.height = Math.max(1, Math.round((c.clientHeight || H) * dpr));
+    var tb = document.createElement("canvas"); tb.width = tw; tb.height = th;
+    var tctx = tb.getContext("2d"), im = tctx.createImageData(tw, th), d = im.data;
+    var pts = MAPS.filter(function (m) { return HOLDERS[m.name]; }).map(function (m) { return { x: m.x, y: m.y, c: hexRgb(FACTIONS[HOLDERS[m.name]]) }; });
+    for (var j = 0; j < th; j++) {
+      for (var i = 0; i < tw; i++) {
+        var x = (i + 0.5) * W / tw, y = (j + 0.5) * H / th, best = null, bd = Infinity;
+        pts.forEach(function (p) { var dd = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y); if (dd < bd) { bd = dd; best = p; } });
+        var k = (j * tw + i) * 4;
+        d[k] = best.c[0]; d[k + 1] = best.c[1]; d[k + 2] = best.c[2]; d[k + 3] = 0.4 * 255;
+      }
+    }
+    tctx.putImageData(im, 0, 0);
+    var ctx = c.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(tb, 0, 0, c.width, c.height);
+  }
+
+  // ---- controls -----------------------------------------------------------
+  el("glyphKey").innerHTML = [
+    ["clear", false, "Clear"], ["clear", true, "Clear, night"], ["partly", false, "Partly cloudy"], ["partly", true, "Partly cloudy, night"],
+    ["overcast", false, "Overcast"], ["storm", false, "Stormy skies"], ["lightrain", false, "Light rain"], ["rain", false, "Rain"],
+    ["heavy", false, "Heavy rain"], ["lightsnow", false, "Light snow"], ["snow", false, "Snow"], ["heavysnow", false, "Heavy snow"],
+    ["fog", false, "Fog"], ["densefog", false, "Dense fog"], ["calm", false, "Calm"], ["breezy", false, "Breezy"], ["wind", false, "Strong wind"]
+  ].map(function (x) { return "<span>" + glyph(x[0], x[1]) + x[2] + "</span>"; }).join("");
+
+  buildMarkers();
+  el("locs").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-i]"); if (!b) return;
+    state.map = MAPS[Number(b.dataset.i)];
+    if (state.map.oneSlot) state.slot = 0;
+    resetRadarTime();
+    markSelected(); render();
+  });
+  el("slots").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-slot]"); if (!b) return;
+    state.slot = Number(b.dataset.slot); resetRadarTime(); render();
+    var again = el("slots").querySelector("[data-slot=\"" + state.slot + "\"]"); if (again) again.focus();
+  });
+  el("nextBtn").addEventListener("click", function () {
+    var m = state.map, t = slotTimes()[state.slot];
+    el("status").innerHTML = "<b>" + esc(m.name) + ", " + hhmm(t) + " confirmed.</b> " +
+      (m.indoor ? "No weather to lock on this map." : state.lock ? "The server locks this raid's weather from " + hhmm(t) + " on." : "The lock is off, so the raid takes whatever weather is current when loading ends.");
+  });
+  el("backBtn").addEventListener("click", function () { el("status").textContent = "Back would return to character selection in game."; });
+  el("ahead").addEventListener("input", function (e) { state.ahead = Number(e.target.value); render(); });
+  function setSeason(winter) {
+    state.winter = winter;
+    el("seaSummer").setAttribute("aria-pressed", String(!winter));
+    el("seaWinter").setAttribute("aria-pressed", String(winter));
+    radarKey();
+    render();
+  }
+  el("seaSummer").addEventListener("click", function () { setSeason(false); });
+  el("seaWinter").addEventListener("click", function () { setSeason(true); });
+  el("load").addEventListener("input", function (e) { state.load = Number(e.target.value); render(); });
+  el("lock").addEventListener("change", function (e) { state.lock = e.target.checked; render(); });
+  el("restart").addEventListener("click", function () {
+    var kept = el("persist").checked, at = new Date();
+    if (!kept) { state.seed = newSeed(); cellCache = {}; patternCache = {}; }
+    render();
+    var clock = pad(at.getHours()) + ":" + pad(at.getMinutes());
+    el("status").innerHTML = kept
+      ? "<b>Restarted at " + clock + ".</b> The saved seed was loaded, so the storms, the radar and both forecasts are unchanged."
+      : "<b>Restarted at " + clock + ".</b> No saved seed, so new weather was rolled and the radar and forecasts may have changed.";
+  });
+  el("radarToggle").addEventListener("click", function () {
+    state.radarOn = !state.radarOn;
+    el("radarToggle").setAttribute("aria-pressed", String(state.radarOn));
+    el("radarKey").hidden = !state.radarOn;
+    radarDirty = true;
+  });
+  el("radarPlay").addEventListener("click", function () {
+    if (state.playing) { stopPlay(); return; }
+    if (state.scrub >= 1) state.scrub = 0;
+    state.playing = true;
+    state.playFrom = state.scrub;
+    state.playStart = performance.now();
+    el("radarPlay").setAttribute("aria-pressed", "true");
+    el("radarPlay").textContent = "Pause";
+    if (!state.radarOn) el("radarToggle").click();
+  });
+  el("opacity").addEventListener("input", function (e) {
+    state.opacity = Number(e.target.value) / 100;
+    e.target.title = e.target.value + "%";
+    radarDirty = true;
+  });
+  el("territories").addEventListener("change", function (e) {
+    state.territories = e.target.checked;
+    el("territory").hidden = !state.territories;
+    if (state.territories) paintTerritory();
+  });
+  window.addEventListener("resize", function () { if (state.territories) paintTerritory(); radarDirty = true; });
+  el("radarScrub").addEventListener("input", function (e) {
+    state.scrub = Number(e.target.value) / 1000;
+    stopPlay();
+    radarDirty = true;
+  });
+
+  el("status").textContent = "Pick a location, then play the raid on the radar to watch what moves over it. The Tarkov clock runs live, 7 times faster than real time.";
+  radarKey();
+  render();
+  requestAnimationFrame(frame);
+  setInterval(tickClocks, 1000);
+  setInterval(render, 10000);
+})();
+</script>
+
+</body>
+</html>

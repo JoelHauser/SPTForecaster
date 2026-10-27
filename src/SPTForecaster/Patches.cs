@@ -12,6 +12,28 @@ using UnityEngine;
 
 namespace SPTForecaster
 {
+    /// <summary>The location screen opens: learn every location's map position, and put the radar on the map.</summary>
+    internal sealed class LocationScreenShowPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(MatchMakerSelectionLocationScreen), nameof(MatchMakerSelectionLocationScreen.Show),
+                new[] { typeof(IEftSession), typeof(RaidSettings), typeof(MatchmakerPlayersController) });
+
+        [PatchPostfix]
+        private static void Postfix(MatchMakerSelectionLocationScreen __instance, IEftSession session)
+        {
+            try
+            {
+                Maps.Remember(session?.LocationSettings);
+                RadarLayer.Attach(__instance._locationButtonsContainer, __instance._locationPathsContainer);
+            }
+            catch (Exception ex)
+            {
+                ForecasterPlugin.Log.LogError("Location screen setup failed: " + ex);
+            }
+        }
+    }
+
     /// <summary>The location screen sets up its time panel: attach the forecast.</summary>
     internal sealed class ConditionsPanelSetPatch : ModulePatch
     {
@@ -156,9 +178,12 @@ namespace SPTForecaster
 
                 var location = world.LocationId;
                 if (Maps.NoForecast(location)) return;
-
-                var blocks = Schedule.Get(force: true);
-                if (blocks == null || blocks.Count == 0) return;
+                if (!Schedule.Ready(force: true)) return;
+                if (!Maps.Position(location, out var x, out var y))
+                {
+                    ForecasterPlugin.Log.LogWarning($"No map position for '{location}'; the raid keeps SPT's weather.");
+                    return;
+                }
 
                 var raidClock = world.GameDateTime.Calculate();
                 var timeOfDay = raidClock.TimeOfDay.TotalSeconds;
@@ -170,7 +195,11 @@ namespace SPTForecaster
                 var locked = ForecasterPlugin.LockOnConfirm.Value && WeatherLock.TryGet(location, rightSlot, out start);
                 if (!locked) start = rightSlot ? now + Schedule.HalfDaySeconds : now;
 
+                // This map's weather: the field read at its button, three Tarkov hours either side of the raid
+                // and sixteen after its start (over two real hours of raid).
+                var blocks = Field.Blocks(x, y, start - 3 * 3600, start + 16 * 3600);
                 var blendReal = BlendRealSeconds();
+                SmoothClouds(blocks, blendReal);
                 var built = Build(blocks, start, raidClock.Ticks, blendReal * Schedule.Acceleration);
                 if (built.Length < 2) return;
                 nodes = built;
@@ -191,9 +220,27 @@ namespace SPTForecaster
             }
         }
 
+        /// <summary>
+        /// Blocks are two real minutes long, so a big cloud change (rain arriving under a clear sky) can be
+        /// quicker than CloudSix lets its clouds move. Averaging cloud cover over neighbouring blocks spreads
+        /// such a change over at least the blend time. Rain and fog are left as they are, so the card stays exact.
+        /// </summary>
+        private static void SmoothClouds(List<Block> blocks, double blendRealSeconds)
+        {
+            var reach = (int)Math.Ceiling(blendRealSeconds / 240.0); // blocks either side; 2 real min per block
+            if (reach < 1 || blocks.Count < 3) return;
+            var original = blocks.ConvertAll(b => b.Clouds);
+            for (var i = 0; i < blocks.Count; i++)
+            {
+                double sum = 0;
+                var n = 0;
+                for (var k = Math.Max(0, i - reach); k <= Math.Min(blocks.Count - 1, i + reach); k++) { sum += original[k]; n++; }
+                blocks[i].Clouds = sum / n;
+            }
+        }
+
         private static WeatherNode[] Build(List<Block> blocks, double start, long raidTicks, double blendSeconds)
         {
-            // Plenty either side: three Tarkov hours before, sixteen after (over two real hours of raid).
             var from = start - 3 * 3600;
             var to = start + 16 * 3600;
             var list = new List<WeatherNode>();

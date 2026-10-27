@@ -156,20 +156,40 @@ namespace SPTForecaster
                 return result;
             }
 
-            result.Headline = new ForecastLine { Text = first.Label, Icon = first.Icon };
-            for (var k = 1; k < segments.Count && k <= 2; k++)
+            // A step that is gone before the card could name a different time for the next one (under 2.5 raid
+            // minutes, or rounding to the same ~5 min) is folded into the change after it, so the card reads
+            // "Heavy rain from ~5 min" rather than "Rain from ~5 min, Heavy rain from ~5 min".
+            var steps = new List<Segment> { segments[0] };
+            for (var s = 1; s < segments.Count; s++)
             {
-                var phrase = Change(segments[k - 1].Reading, segments[k].Reading, segments[k].FromMinute);
-                result.Lines.Add(new ForecastLine { Text = char.ToUpperInvariant(phrase[0]) + phrase.Substring(1), Icon = segments[k].Reading.Icon });
+                var next = s + 1 < segments.Count ? segments[s + 1] : null;
+                if (next != null && (next.FromMinute - segments[s].FromMinute < 2.5 || Slot5(next.FromMinute) == Slot5(segments[s].FromMinute))) continue;
+                steps.Add(segments[s]);
             }
 
-            if (segments.Count > 3)
+            result.Headline = new ForecastLine { Text = first.Label, Icon = first.Icon };
+            for (var k = 1; k < steps.Count && k <= 2; k++)
             {
-                result.Lines.Add(new ForecastLine { Text = "More changes after ~" + Round5(segments[3].FromMinute) + " min", Faint = true });
+                var phrase = Change(steps[k - 1].Reading, steps[k].Reading, steps[k].FromMinute);
+                result.Lines.Add(new ForecastLine { Text = char.ToUpperInvariant(phrase[0]) + phrase.Substring(1), Icon = steps[k].Reading.Icon });
+            }
+
+            if (steps.Count > 3)
+            {
+                result.Lines.Add(new ForecastLine { Text = "More changes after ~" + Round5(steps[3].FromMinute) + " min", Faint = true });
             }
 
             return result;
         }
+
+        /// <summary>The weather pattern for a raid starting at t, as a card line ("Prolonged rain until ~03:00").</summary>
+        public static ForecastLine PatternLine(double start)
+        {
+            var name = Field.PatternAt(start, out var end);
+            return new ForecastLine { Text = name + " until ~" + Maps.Clock(end), Faint = true };
+        }
+
+        private static int Slot5(double minute) => minute < 2.5 ? 0 : (int)Math.Round(minute / 5);
 
         private static string Change(Reading prev, Reading cur, double minute)
         {

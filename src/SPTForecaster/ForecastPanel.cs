@@ -37,6 +37,7 @@ namespace SPTForecaster
             var fp = panel.GetComponent<ForecastPanel>() ?? panel.gameObject.AddComponent<ForecastPanel>();
             fp._panel = panel;
             fp._location = raidSettings?.SelectedLocation;
+            Maps.Remember(fp._location);
             fp.ApplySlotRules();
             fp.Refresh();
         }
@@ -91,9 +92,13 @@ namespace SPTForecaster
             _nextRefresh = Time.unscaledTime + RefreshInterval;
             try
             {
-                var show = ForecasterPlugin.ShowForecast.Value && _location != null && !Maps.NoForecast(_location.Id);
-                var blocks = show ? Schedule.Get() : null;
-                show &= blocks != null;
+                var now = Schedule.TarkovNow;
+                var rightSelected = _panel._pmTimeToggle != null && _panel._pmTimeToggle.isOn && _panel._pmTimeToggle.gameObject.activeInHierarchy;
+                RadarLayer.TargetTime = rightSelected ? now + Schedule.HalfDaySeconds : now;
+
+                var ready = Schedule.Ready();
+                var show = ForecasterPlugin.ShowForecast.Value && ready && _location != null && !Maps.NoForecast(_location.Id)
+                           && Maps.Position(_location.Id, out _, out _);
 
                 EnsureViews(rebuildLayout);
                 if (!show)
@@ -104,15 +109,24 @@ namespace SPTForecaster
                 }
 
                 var raidMinutes = _location.EscapeTimeLimit > 0 ? _location.EscapeTimeLimit : 40;
-                var now = Schedule.TarkovNow;
-                Show(_left, Forecast.Build(blocks, now, raidMinutes), _panel._amTimeToggle, 0, now);
-                Show(_right, Forecast.Build(blocks, now + Schedule.HalfDaySeconds, raidMinutes), _panel._pmTimeToggle, 1, now + Schedule.HalfDaySeconds);
+                Show(_left, Build(now, raidMinutes), _panel._amTimeToggle, 0, now);
+                Show(_right, Build(now + Schedule.HalfDaySeconds, raidMinutes), _panel._pmTimeToggle, 1, now + Schedule.HalfDaySeconds);
             }
             catch (Exception ex)
             {
                 ForecasterPlugin.Log.LogError("Forecast refresh failed: " + ex);
                 _nextRefresh = Time.unscaledTime + 10f;
             }
+        }
+
+        /// <summary>This location's weather for a raid starting at <paramref name="start"/>: the field read at its button.</summary>
+        private ForecastResult Build(double start, int raidMinutes)
+        {
+            Maps.Position(_location.Id, out var x, out var y);
+            var blocks = Field.Blocks(x, y, start - Field.Step, start + (raidMinutes + 5) * 60 * Schedule.Acceleration);
+            var forecast = Forecast.Build(blocks, start, raidMinutes);
+            forecast.Lines.Add(Forecast.PatternLine(start));
+            return forecast;
         }
 
         private void Show(ForecastView view, ForecastResult forecast, Toggle toggle, int index, double start)
@@ -158,10 +172,10 @@ namespace SPTForecaster
         }
     }
 
-    /// <summary>The forecast block for one slot: a headline row and up to three smaller rows, each with an optional icon.</summary>
+    /// <summary>The forecast block for one slot: a headline row and up to four smaller rows (changes, "more changes", the weather pattern), each with an optional icon.</summary>
     internal sealed class ForecastView
     {
-        private const int RowCount = 4;
+        private const int RowCount = 5;
 
         private GameObject _root;
         private readonly Image[] _icons = new Image[RowCount];

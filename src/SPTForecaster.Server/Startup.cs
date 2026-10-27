@@ -4,14 +4,14 @@ using SPTarkov.Common.Models.Logging;
 
 namespace SPTForecaster.Server;
 
-/// <summary>Builds (or loads) the schedule at start, so the first menu visit is instant and the log says the mod is there.</summary>
+/// <summary>Loads (or rolls) the weather seed at start, so the log says the mod is there.</summary>
 [Injectable(TypePriority = OnLoadOrder.PostLoad)]
-public class Startup(ForecastSchedule schedule, ISptLogger<Startup> logger) : IOnLoad
+public class Startup(WeatherSeed weather, ISptLogger<Startup> logger) : IOnLoad
 {
     public Task OnLoadAsync(CancellationToken cancellationToken)
     {
-        var blocks = schedule.Snapshot();
-        logger.Success($"[SPTForecaster] 0.0.2 loaded, {blocks.Count} weather blocks ready.");
+        _ = weather.Seed;
+        logger.Success("[SPTForecaster] 0.0.2 loaded, weather seed ready.");
         return Task.CompletedTask;
     }
 }
