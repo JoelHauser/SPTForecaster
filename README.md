@@ -2,7 +2,16 @@
 
 A weather forecast for SPT's map selection screen. Above each time slot you see what the weather will do during that raid, so the day and night slots become a real choice.
 
-**Status: design stage.** No code yet. The design below is settled; the open questions at the end come first.
+**Status: 0.0.1 pre-release, not yet tested in game.** Requires SPT 4.1.
+
+## Install
+
+Download `SPTForecaster-<version>.zip` from [Releases](https://github.com/JoelHauser/SPTForecaster/releases) and extract it into your SPT folder (the one with `EscapeFromTarkov.exe` and `SPT_Runtime`). It adds:
+
+- `BepInEx/plugins/SPTForecaster.dll` (client)
+- `SPT_Runtime/user/mods/SPTForecaster/SPTForecaster.Server.dll` (server)
+
+Both halves are needed. Settings (F12): show the forecast, make raid weather follow it, lock on confirm, layout offsets and text size, and detailed logging.
 
 Preview: open [docs/forecast-preview.html](docs/forecast-preview.html) in a browser. It simulates the map selection screen and generates a weather schedule with SPT's own rules and default `weather.json` weights.
 
@@ -60,7 +69,8 @@ Parts: a server mod (schedule, persistence, forecast route, slot lock) and a Bep
 
 ## Open questions
 
-- **How the client applies weather in raid.** It receives a list of weather nodes from `/client/localGame/weather`. How it picks and blends between them during the raid needs to be read from the client code before the server side is built. A client patch may be needed.
+- **Answered: how the client applies weather in raid.** It builds a curve from the weather nodes and samples it with the raid's in-game clock. The client plugin hands it nodes laid on that clock from the same schedule the forecast reads, so the two cannot disagree. Still to confirm in game.
+- **Card placement.** The forecast sits above each time toggle; the prefab's layout hasn't been seen, so offsets are adjustable (F12) until the first test settles them.
 - **Winter rain as snow.** The assumption is that the client renders rain as snow in the winter season. To confirm in game.
 - **Wording cut-offs.** The thresholds that turn raw values into words (e.g. how much rain counts as "light rain") need tuning against screenshots.
 - **Other weather mods** (SVM, Realism seasons) may change the schedule after it's read. Detect and warn, or read last.
