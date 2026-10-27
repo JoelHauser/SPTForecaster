@@ -75,11 +75,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .radar-bar button { padding: 3px 10px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--fg); font: inherit; letter-spacing: inherit; text-transform: inherit; }
 .radar-bar button:hover { border-color: var(--fg); }
 .radar-bar button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
-.radar-time { font-family: var(--font-data); font-weight: 500; letter-spacing: 0; text-transform: none; min-width: 9.5em; }
+.radar-time { font-family: var(--font-data); font-weight: 500; letter-spacing: 0; text-transform: none; min-width: 11em; }
+.radar-bar input[type=range] { width: 110px; accent-color: var(--fg); }
 .radar-key { position: absolute; left: 10px; top: 10px; display: flex; gap: 3px; align-items: center; padding: 4px 7px; background: rgba(8,9,8,.75); border: 1px solid var(--line-soft); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .radar-key i { width: 14px; height: 8px; display: inline-block; }
 .radar-key span { margin: 0 4px; }
-@media (max-width: 520px) { .radar-key { display: none; } .radar-time { min-width: 0; } }
+@media (max-width: 520px) { .radar-key { display: none; } .radar-time { min-width: 0; } .radar-bar { left: 10px; flex-wrap: wrap; } .radar-bar input[type=range] { flex: 1; width: auto; } }
 .map-note { position: absolute; left: 12px; bottom: 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(199,197,180,.35); }
 .loc { position: absolute; transform: translate(-7px, -7px); display: flex; align-items: center; gap: 7px; background: none; border: 0; padding: 0; white-space: nowrap; }
 .loc i { width: 14px; height: 14px; border: 1.5px solid var(--fg); background: var(--screen); transform: rotate(45deg); flex: none; transition: background .15s, border-color .15s; }
@@ -233,6 +234,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         <div class="radar-bar">
           <button type="button" id="radarToggle" aria-pressed="true">Radar</button>
           <button type="button" id="radarPlay" aria-pressed="false">Play raid</button>
+          <input type="range" id="radarScrub" min="0" max="1000" value="0" aria-label="Raid time on the radar">
           <span class="radar-time" id="radarTime" aria-live="off"></span>
         </div>
       </div>
@@ -572,7 +574,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   // ---- state ----------------------------------------------------------------
   var el = function (id) { return document.getElementById(id); };
-  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0 };
+  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0, playFrom: 0, scrub: 0 };
 
   function nowReal() { return Date.now() + state.ahead * 60e3; }
   function slotTimes() {
@@ -700,11 +702,33 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       "<span>Fog</span><i style=\"background:rgba(176,176,166,.55)\"></i>";
   }
 
+  // The radar's position in the raid, 0 (start) to 1 (end). Play runs it once to the end and stops there;
+  // it never loops, so the picture never jumps back.
   function radarTime() {
-    var t0 = slotTimes()[state.slot] || slotTimes()[0];
-    if (!state.playing) return { t: t0, minute: 0 };
-    var span = state.map.indoor ? 40 : state.map.raid, p = ((performance.now() - state.playStart) / 1000 % PLAY_SECONDS) / PLAY_SECONDS;
-    return { t: t0 + p * span * 60 * ACCEL, minute: p * span };
+    var times = slotTimes(), t0 = times[state.slot] != null ? times[state.slot] : times[0];
+    var span = state.map.indoor ? 40 : state.map.raid;
+    if (state.playing) {
+      state.scrub = Math.min(1, state.playFrom + (performance.now() - state.playStart) / 1000 / PLAY_SECONDS);
+      if (state.scrub >= 1) stopPlay();
+    }
+    return { t: t0 + state.scrub * span * 60 * ACCEL, minute: state.scrub * span, end: state.scrub >= 1 };
+  }
+  function stopPlay() {
+    state.playing = false;
+    el("radarPlay").setAttribute("aria-pressed", "false");
+    el("radarPlay").textContent = state.scrub >= 1 ? "Replay" : "Play raid";
+  }
+  function resetRadarTime() {
+    state.scrub = 0;
+    el("radarScrub").value = 0;
+    stopPlay();
+    radarDirty = true;
+  }
+  // Keeps the canvas at the screen's real pixel size, so the radar is sharp at any resolution and zoom.
+  function sizeRadar() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.max(1, Math.round((radar.clientWidth || W) * dpr)), h = Math.max(1, Math.round((radar.clientHeight || H) * dpr));
+    if (radar.width !== w || radar.height !== h) { radar.width = w; radar.height = h; }
   }
 
   function paintField(t) {
@@ -730,16 +754,21 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     if (state.radarOn && (radarDirty || (rt.t !== lastRadarT && now - lastPaint > 50))) {
       paintField(rt.t); lastRadarT = rt.t; lastPaint = now; radarDirty = false;
     }
-    rctx.clearRect(0, 0, W, H);
+    sizeRadar();
+    rctx.clearRect(0, 0, radar.width, radar.height);
     if (state.radarOn) {
-      // Upscaled with smoothing and a light blur, so the field reads as soft weather, not a pixel grid.
+      // Upscaled with smoothing and a light blur (scaled with the canvas), so the field reads as soft
+      // weather, not a pixel grid, whatever the display size.
       rctx.imageSmoothingEnabled = true;
       rctx.imageSmoothingQuality = "high";
-      rctx.filter = "blur(3px)";
-      rctx.drawImage(buf, 0, 0, W, H);
+      rctx.filter = "blur(" + (3 * radar.width / W).toFixed(1) + "px)";
+      rctx.drawImage(buf, 0, 0, radar.width, radar.height);
       rctx.filter = "none";
     }
-    el("radarTime").textContent = state.radarOn ? hhmm(rt.t) + (state.playing ? "  +" + Math.floor(rt.minute) + " min" : "") : "";
+    if (state.playing) el("radarScrub").value = Math.round(state.scrub * 1000);
+    el("radarTime").textContent = state.radarOn
+      ? hhmm(rt.t) + (state.scrub > 0 ? "  +" + Math.floor(rt.minute) + " min" : "") + (rt.end ? " · raid end" : "")
+      : "";
     requestAnimationFrame(frame);
   }
 
@@ -756,11 +785,12 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var b = e.target.closest("button[data-i]"); if (!b) return;
     state.map = MAPS[Number(b.dataset.i)];
     if (state.map.oneSlot) state.slot = 0;
+    resetRadarTime();
     markSelected(); render();
   });
   el("slots").addEventListener("click", function (e) {
     var b = e.target.closest("button[data-slot]"); if (!b) return;
-    state.slot = Number(b.dataset.slot); render();
+    state.slot = Number(b.dataset.slot); resetRadarTime(); render();
     var again = el("slots").querySelector("[data-slot=\"" + state.slot + "\"]"); if (again) again.focus();
   });
   el("nextBtn").addEventListener("click", function () {
@@ -797,11 +827,19 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     radarDirty = true;
   });
   el("radarPlay").addEventListener("click", function () {
-    state.playing = !state.playing;
+    if (state.playing) { stopPlay(); return; }
+    if (state.scrub >= 1) state.scrub = 0;
+    state.playing = true;
+    state.playFrom = state.scrub;
     state.playStart = performance.now();
-    el("radarPlay").setAttribute("aria-pressed", String(state.playing));
-    el("radarPlay").textContent = state.playing ? "Stop" : "Play raid";
-    if (state.playing && !state.radarOn) el("radarToggle").click();
+    el("radarPlay").setAttribute("aria-pressed", "true");
+    el("radarPlay").textContent = "Pause";
+    if (!state.radarOn) el("radarToggle").click();
+  });
+  el("radarScrub").addEventListener("input", function (e) {
+    state.scrub = Number(e.target.value) / 1000;
+    stopPlay();
+    radarDirty = true;
   });
 
   el("status").textContent = "Pick a location, then play the raid on the radar to watch what moves over it. The Tarkov clock runs live, 7 times faster than real time.";
