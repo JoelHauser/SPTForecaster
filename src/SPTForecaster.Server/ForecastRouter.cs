@@ -27,7 +27,7 @@ public class ForecastRouter(JsonUtil jsonUtil, ForecastSchedule schedule)
         var blocks = schedule.Snapshot();
         return JsonSerializer.Serialize(new
         {
-            version = "0.0.1",
+            version = "0.0.2",
             acceleration = schedule.Acceleration,
             now = schedule.TarkovNow,
             season = schedule.Season,

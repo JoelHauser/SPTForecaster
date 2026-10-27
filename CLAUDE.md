@@ -5,11 +5,12 @@ Two halves: a BepInEx client plugin (`src/SPTForecaster`, net472) and an SPT 4.1
 (`src/SPTForecaster.Server`, net10.0). Repo https://github.com/JoelHauser/SPTForecaster (public).
 Design and decisions: README.md. Browser preview: docs/forecast-preview.html.
 
-## NEXT: first in-game test of 0.0.1
+## NEXT: first in-game test of 0.0.2
 
-The 0.0.1 zip is attached to the GitHub pre-release. **Never run in game.** The server half was run
-on the work machine (SPT 4.1, C:\HUH): it loads, builds 24 blocks, saves schedule.json, and the route
-answers. Client untested. See "What the first test has to look at".
+The 0.0.2 zip is attached to its GitHub pre-release (0.0.1 is superseded: 0.0.2 adds the CloudSix-aware
+blend). **Never run in game.** The server half was run on the work machine (SPT 4.1, C:\HUH): it
+loads, builds 24 blocks, saves schedule.json, and the route answers. Client untested. See "What the
+first test has to look at".
 
 ## Building
 
@@ -38,10 +39,11 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
   from the server's "yyyy-MM-dd HH:mm:ss") and samples it with `GameWorld.GameDateTime.Calculate().Ticks`,
   the raid's in-game clock (`BaseLocalGame.InitWeather`: backend clock, +12 h for EDateTime.PAST;
   PingPong wrap outside the nodes). `SetWeatherNodesPatch` replaces the nodes: the block covering the
-  raid's start lands at the raid clock's current tick; two nodes per block (start, end − 14 in-game
-  min) so a block holds steady and blends in its last two real minutes. Slot found by matching the raid
-  clock's time of day to now or now+12 h. InitWeather also calls SetWeatherNodes (random test nodes);
-  the patch replaces both calls.
+  raid's start lands at the raid clock's current tick; two nodes per block (start + half a blend,
+  end − half a blend) so a block holds steady and the change to the next is a linear blend centred on
+  the boundary (half done at the minute the card names). Blend = 120 real s, or CloudSix's transition
+  time + 10 s if larger (see Compatibility). Slot found by matching the raid clock's time of day to now
+  or now+12 h. InitWeather also calls SetWeatherNodes (random test nodes); the patch replaces both calls.
 - **Lock.** Prefix on `MatchMakerSelectionLocationScreen.CG_Awake` (Next) and `CG_Awake2` (Ready) records
   location, slot and Tarkov second; the raid uses it if same location+slot and under 30 real min old.
 - **UI** (`ForecastPanel`): component on `LocationConditionsPanel` (fields `_amTimeToggle` CURR,
@@ -55,10 +57,29 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
 - **Maps** (`Maps.cs`): no forecast on factory4_day/night, laboratory, Labyrinth, icebreaker, hideout.
   Icebreaker: right toggle hidden, clock text forced to 23:00:00 every frame.
 
+## Compatibility
+
+**CloudSix** (github.com/matsixx/CloudSix, `com.matsix.cloudsix` 4.0.1, read 2026-10-27): replaces the
+game's clouds with volumetric ones. Patches `CloudLayerRenderer.RenderClouds`, `TOD_Sky.LateUpdate`,
+`EnvironmentManager.Update`, `PrismEffects.HandleExposure`, `BloodOnScreen.Start` and a postfix on
+`WeatherController.LateUpdate` that reads `WeatherCurve.Cloudiness` and `.Wind` every frame, so its
+clouds follow our nodes with no extra work. It slew-limits coverage: a full clear<->overcast swing takes
+at least config `Weather / Min Cloud Transition Time (sec)` (default 200 s). `SetWeatherNodesPatch`
+reads that entry through `Chainloader.PluginInfos[...].Instance.Config.TryGetEntry` and blends at
+least that long, so its clouds don't trail a forecast change. Its per-raid cloud heights are rolled
+from the curve's cloudiness at raid start (after our nodes are in). Its Fika sync shares cloud motion
+from the host; the weather itself still comes from each peer's nodes (Fika untested here).
+
+**TushonkaTerritories** (github.com/minesettimi/TushonkaTerritories, `com.minesettimi.territories`):
+no overlap with the forecast. It never touches weather, time, `LocationConditionsPanel` or Next/Ready;
+its server only reads `EscapeTimeLimit` for spawns. It adds a faction-colour Voronoi image as the first
+child of `Content/Map/Image` and recolours `LocationButton`s, which matters only for the radar idea
+(radar-prototype branch): a radar layer must sit above that image and below the buttons, translucent.
+
 ## What the first test has to look at
 
-1. Server console: `[SPTForecaster] 0.0.1 loaded, N weather blocks ready.` BepInEx log:
-   `SPTForecaster 0.0.1 loaded.` and no "Could not ..." errors.
+1. Server console: `[SPTForecaster] 0.0.2 loaded, N weather blocks ready.` BepInEx log:
+   `SPTForecaster 0.0.2 loaded.` and no "Could not ..." errors.
 2. Location screen: a forecast above both time toggles. **Placement is unverified** (prefab never seen):
    overlapping something? Use F12 Layout offsets and note the values that look right.
 3. Icons present and matching the words? Font right? Selected slot brighter?

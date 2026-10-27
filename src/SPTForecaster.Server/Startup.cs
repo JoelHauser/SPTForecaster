@@ -11,7 +11,7 @@ public class Startup(ForecastSchedule schedule, ISptLogger<Startup> logger) : IO
     public Task OnLoadAsync(CancellationToken cancellationToken)
     {
         var blocks = schedule.Snapshot();
-        logger.Success($"[SPTForecaster] 0.0.1 loaded, {blocks.Count} weather blocks ready.");
+        logger.Success($"[SPTForecaster] 0.0.2 loaded, {blocks.Count} weather blocks ready.");
         return Task.CompletedTask;
     }
 }

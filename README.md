@@ -13,6 +13,10 @@ Download `SPTForecaster-<version>.zip` from [Releases](https://github.com/JoelHa
 
 Both halves are needed. Settings (F12): show the forecast, make raid weather follow it, lock on confirm, layout offsets and text size, and detailed logging.
 
+**Works with:**
+- [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast. SPTForecaster reads CloudSix's "Min Cloud Transition Time" and blends weather changes at least that slowly, so the clouds keep pace with the card.
+- [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): no overlap; both can be installed.
+
 Preview: open [docs/forecast-preview.html](docs/forecast-preview.html) in a browser. It simulates the map selection screen and generates a weather schedule with SPT's own rules and default `weather.json` weights.
 
 ## What it shows

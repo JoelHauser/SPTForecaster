@@ -109,13 +109,37 @@ namespace SPTForecaster
     /// <summary>
     /// The raid hands the weather curve its nodes. The curve is sampled by the raid's in-game clock
     /// (GameWorld.GameDateTime), so nodes are laid on that clock: the block that covers the raid's start
-    /// lands at the raid's first second. Each block holds steady and blends into the next over its last
-    /// two real minutes, so a change lands when the forecast said it would.
+    /// lands at the raid's first second. Each block holds steady, and the change to the next is a blend
+    /// centred on the block boundary, so a change is half done at the minute the forecast names.
     /// </summary>
     internal sealed class SetWeatherNodesPatch : ModulePatch
     {
-        /// <summary>The blend into the next block, in Tarkov seconds (two real minutes at x7).</summary>
-        private const double BlendSeconds = 14 * 60;
+        /// <summary>The shortest blend between blocks, in real seconds.</summary>
+        private const double MinBlendRealSeconds = 120;
+
+        /// <summary>
+        /// CloudSix (com.matsix.cloudsix) draws its own clouds from the weather curve and slows coverage
+        /// changes so a full clear/overcast swing takes at least its "Min Cloud Transition Time" (200 s by
+        /// default). Blending at least that slowly keeps its clouds in step with the forecast instead of
+        /// trailing a change by up to a minute or more.
+        /// </summary>
+        private static double BlendRealSeconds()
+        {
+            try
+            {
+                if (BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue("com.matsix.cloudsix", out var info) && info.Instance != null
+                    && info.Instance.Config.TryGetEntry<float>("Weather", "Min Cloud Transition Time (sec)", out var entry))
+                {
+                    return Math.Max(MinBlendRealSeconds, entry.Value + 10);
+                }
+            }
+            catch (Exception ex)
+            {
+                ForecasterPlugin.Log.LogWarning("Could not read CloudSix's cloud transition time: " + ex.Message);
+            }
+
+            return MinBlendRealSeconds;
+        }
 
         protected override MethodBase GetTargetMethod() =>
             AccessTools.Method(typeof(WeatherController), nameof(WeatherController.SetWeatherNodes));
@@ -146,7 +170,8 @@ namespace SPTForecaster
                 var locked = ForecasterPlugin.LockOnConfirm.Value && WeatherLock.TryGet(location, rightSlot, out start);
                 if (!locked) start = rightSlot ? now + Schedule.HalfDaySeconds : now;
 
-                var built = Build(blocks, start, raidClock.Ticks);
+                var blendReal = BlendRealSeconds();
+                var built = Build(blocks, start, raidClock.Ticks, blendReal * Schedule.Acceleration);
                 if (built.Length < 2) return;
                 nodes = built;
 
@@ -155,7 +180,7 @@ namespace SPTForecaster
                     var first = blocks.Find(b => b.Start <= start && b.End > start);
                     var forecast = Forecast.Build(blocks, start, 60);
                     ForecasterPlugin.Log.LogInfo(
-                        $"Raid weather for {location}: {built.Length} nodes from Tarkov {Maps.Clock(start)} ({(locked ? "locked at confirm" : "not locked, from now")}), raid clock {raidClock:HH:mm:ss}. " +
+                        $"Raid weather for {location}: {built.Length} nodes from Tarkov {Maps.Clock(start)} ({(locked ? "locked at confirm" : "not locked, from now")}), raid clock {raidClock:HH:mm:ss}, changes blend over {blendReal:0} s. " +
                         (first != null ? $"Opening block clouds {first.Clouds:0.##} rain {first.Rain:0} @ {first.RainIntensity:0.##} fog {first.Fog:0.####} wind {first.WindSpeed:0}. " : "") +
                         $"Forecast for this start: {forecast.Summary}.");
                 }
@@ -166,7 +191,7 @@ namespace SPTForecaster
             }
         }
 
-        private static WeatherNode[] Build(List<Block> blocks, double start, long raidTicks)
+        private static WeatherNode[] Build(List<Block> blocks, double start, long raidTicks, double blendSeconds)
         {
             // Plenty either side: three Tarkov hours before, sixteen after (over two real hours of raid).
             var from = start - 3 * 3600;
@@ -174,12 +199,15 @@ namespace SPTForecaster
             var list = new List<WeatherNode>();
             long last = long.MinValue;
 
+            // Each block is held from half a blend after its start to half a blend before its end; the curve
+            // runs linearly between one block's last node and the next block's first, so the blend straddles
+            // the boundary. A block never gives up more than half its length to blending.
             foreach (var b in blocks)
             {
                 if (b.End <= from || b.Start >= to) continue;
-                var hold = Math.Min(BlendSeconds, (b.End - b.Start) * 0.25);
-                Add(list, b, b.Start, start, raidTicks, ref last);
-                Add(list, b, b.End - hold, start, raidTicks, ref last);
+                var half = Math.Min(blendSeconds / 2, (b.End - b.Start) * 0.25);
+                Add(list, b, b.Start + half, start, raidTicks, ref last);
+                Add(list, b, b.End - half, start, raidTicks, ref last);
             }
 
             return list.ToArray();
