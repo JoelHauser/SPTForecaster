@@ -517,8 +517,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       curve: k.curve * (r() < 0.5 ? -1 : 1), plateau: k.plateau
     };
     if (kind === "coastfog") {
-      // Lies along the coast (north-south), drifting only a little on or off shore.
-      c.ang = 0; c.vx = (r() - 0.5) * 0.0006; c.vy = 0;
+      // Lies along the coast (north-south), drifting only a little on or off shore. cellValue moves it
+      // with the hour and roughs up its landward edge.
+      c.ang = 0; c.vx = (r() - 0.5) * 0.0006; c.vy = 0; c.coast = true;
       c.x0 = COAST_X + (r() - 0.5) * 24; c.y0 = COAST_Y + (r() - 0.5) * 40;
     } else if (kind === "shield") {
       // Arrives over the region and lingers: starts a little upwind of the middle.
@@ -575,6 +576,12 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     if (age < 0 || age > 1) return 0;
     var env = c.plateau ? smoothstep(0, 0.12, age) * (1 - smoothstep(0.85, 1, age)) : Math.pow(Math.sin(Math.PI * age), 0.7);
     var dx = x - (c.x0 + c.vx * (t - c.birth)), dy = y - (c.y0 + c.vy * (t - c.birth));
+    if (c.coast) {
+      // A marine layer comes ashore overnight and pulls back offshore as the day warms, and its edge is
+      // ragged, tongues of fog reaching inland with clear gaps between, never a ruler line.
+      dx -= 20 * (fogHour(t) - 0.5);
+      dx += 40 * (vnoise(y / 38 + 11.3, t / 5400, 3.7) - 0.5);
+    }
     var ca = Math.cos(c.ang), sa = Math.sin(c.ang);
     var along = dx * ca + dy * sa, across = -dx * sa + dy * ca;
     along -= c.curve * across * across;             // bows the band
@@ -599,8 +606,29 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       var tex = fbm(wx / 32, wy / 32, z * 0.8);
       rain = Math.min(1, rain * Math.max(0, 0.05 + 1.55 * tex * tex + 0.25 * tex));
     }
-    if (fog > 0.01) fog = Math.min(1, fog * (0.75 + 0.4 * vnoise(wx / 90 + 5.1, wy / 90 + 9.3, z * 0.5)));
+    // Fog is broken into banks and thinner patches, and mostly burns off by midday.
+    if (fog > 0.01) fog = Math.min(1, fog * fogHour(t) * (0.3 + 1.1 * fbm(wx / 48 + 5.1, wy / 48 + 9.3, z * 0.35)));
     return { rain: rain, fog: fog };
+  }
+
+  // Cloudiness on the game's scale (-1 clear .. 1 thundercloud, 1.2 under rain) at frame x. Locations and
+  // the radar both read it here, so the clouds on the map are the clouds in the forecast.
+  function skyClouds(x, t, rain, raining) {
+    var base = Math.max(-1, Math.min(1, patternClouds(t) + 0.25 * Math.sin(t / 9000 + x / 90)));
+    return raining ? Math.min(1.2, 0.85 + 0.4 * rain) : Math.min(1, base + 1.6 * rain);
+  }
+  // Cloud on the radar (0..1): the share of sky the cloudiness covers, drawn as broken cloud.
+  function cloudCover(x, y, t, rain) {
+    var cover = Math.max(0, Math.min(1, (skyClouds(x, t, rain, rain >= RAIN_STEPS[0]) + 0.9) / 1.9));
+    var n = (fbm(x / 60 + 3.7, y / 60 + 1.9, t / 2700) - 0.25) / 0.5;
+    return smoothstep(1 - cover - 0.28, 1 - cover + 0.28, n);
+  }
+
+  // How much fog the hour allows: all of it from evening through mid-morning, a little over an eighth in
+  // the afternoon, when the sun has burnt it off.
+  function fogHour(t) {
+    var h = (((t % 86400) + 86400) % 86400) / 3600;
+    return 1 - 0.88 * smoothstep(8.5, 12, h) * (1 - smoothstep(17.5, 21, h));
   }
 
   // Levels with a little hysteresis: going up needs the value a margin past the threshold, coming down a
@@ -621,8 +649,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       rl = level(f.rain, RAIN_STEPS, rl);
       fl = level(f.fog, FOG_STEPS, fl);
       // Background cloud follows the pattern (fine weather clear, prolonged rain grey), with a little drift.
-      var base = Math.max(-1, Math.min(1, patternClouds(t) + 0.25 * Math.sin(t / 9000 + map.x / 90)));
-      var clouds = rl ? Math.min(1.2, 0.85 + 0.4 * f.rain) : Math.min(1, base + 1.6 * f.rain);
+      var clouds = skyClouds(map.x, t, f.rain, rl > 0);
       if (t + STEP <= from) continue; // warm-up samples only seed the hysteresis
       out.push({
         start: t, end: t + STEP,
@@ -822,9 +849,9 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   // drawing resolution (GW x GH). Colour and outlines are worked out per drawn pixel, so edges and the
   // fine level outlines stay crisp and smooth instead of being enlarged blocks.
   var PLAY_SECONDS = 8, FW = 161, FH = 108, GW = 600, GH = 400;
-  var fieldRain = new Float32Array(FW * FH), fieldFog = new Float32Array(FW * FH);
+  var fieldRain = new Float32Array(FW * FH), fieldFog = new Float32Array(FW * FH), fieldCloud = new Float32Array(FW * FH);
   // Interpolation runs rows first, then columns: these hold the grid stretched to full width.
-  var wideRain = new Float32Array(FH * GW), wideFog = new Float32Array(FH * GW);
+  var wideRain = new Float32Array(FH * GW), wideFog = new Float32Array(FH * GW), wideCloud = new Float32Array(FH * GW);
   function taps(n, size) {
     // For each output column/row: the four grid indices and Catmull-Rom weights to blend them with.
     var idx = new Int32Array(n * 4), wt = new Float32Array(n * 4);
@@ -849,6 +876,14 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     snow: [[0.08, [150, 186, 232], 0.13], [0.16, [118, 160, 226], 0.18], [0.26, [86, 132, 214], 0.24], [0.38, [150, 200, 250], 0.32],
            [0.52, [196, 224, 255], 0.4], [0.68, [230, 240, 255], 0.48], [0.84, [255, 255, 255], 0.56]]
   };
+  // How much of the radar shows at a drawn pixel: a superellipse fade starting well inside the frame, along
+  // a wobbling line, so the radar never shows the straight side of its box.
+  function edgeMask(i, j) {
+    var u = 2 * i / (GW - 1) - 1, v = 2 * j / (GH - 1) - 1;
+    var r = Math.pow(Math.pow(Math.abs(u), 4) + Math.pow(Math.abs(v), 4), 0.25), ang = Math.atan2(v, u);
+    r += 0.05 * Math.sin(ang * 5 + 1.3) + 0.035 * Math.sin(ang * 11 + 0.4) + 0.02 * Math.sin(ang * 23 + 2.1);
+    return 1 - smoothstep(0.72, 0.98, r);
+  }
   function smoothstep(a, b, v) { var x = Math.min(1, Math.max(0, (v - a) / (b - a))); return x * x * (3 - 2 * x); }
   // Colour and opacity for 1024 intensity steps. Each band begins at its threshold with a short smooth
   // blend (antialiasing), so bands read as clean steps with soft edges, never as jagged pixels.
@@ -871,7 +906,8 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var bands = BANDS[state.winter ? "snow" : "rain"];
     el("radarKey").innerHTML = "<b id=\"radarPattern\" class=\"radar-pattern\"></b><span>" + (state.winter ? "Snow" : "Rain") + "</span>" +
       bands.map(function (bd) { return "<i style=\"background:rgb(" + bd[1].join(",") + ")\"></i>"; }).join("") +
-      "<span>Fog</span><i style=\"background:rgba(176,176,166,.55)\"></i>";
+      "<span>Fog</span><i style=\"background:rgba(176,176,166,.55)\"></i>" +
+      "<span>Cloud</span><i style=\"background:rgba(214,218,216,.45)\"></i>";
   }
 
   // The radar's position in the raid, 0 (start) to 1 (end). Play runs it once to the end and stops there;
@@ -908,8 +944,8 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var cells = activeCells(t), d = img.data, n = 0;
     for (var gj = 0; gj < FH; gj++) {
       for (var gi = 0; gi < FW; gi++, n++) {
-        var f = fieldAt(cells, gi * W / (FW - 1), gj * H / (FH - 1), t);
-        fieldRain[n] = f.rain; fieldFog[n] = f.fog;
+        var fx = gi * W / (FW - 1), fy = gj * H / (FH - 1), f = fieldAt(cells, fx, fy, t);
+        fieldRain[n] = f.rain; fieldFog[n] = f.fog; fieldCloud[n] = cloudCover(fx, fy, t, f.rain);
       }
     }
     // 2. Every drawn pixel: interpolate the grid, then colour it. A light wash that follows the field
@@ -919,27 +955,31 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     for (j = 0; j < FH; j++) {
       var src = j * FW, dst = j * GW;
       for (i = 0; i < GW; i++) {
-        var xi = i * 4, r0 = 0, f0 = 0;
-        for (p = 0; p < 4; p++) { var w = TX.wt[xi + p], at = src + TX.idx[xi + p]; r0 += fieldRain[at] * w; f0 += fieldFog[at] * w; }
-        wideRain[dst + i] = r0; wideFog[dst + i] = f0;
+        var xi = i * 4, r0 = 0, f0 = 0, c0 = 0;
+        for (p = 0; p < 4; p++) { var w = TX.wt[xi + p], at = src + TX.idx[xi + p]; r0 += fieldRain[at] * w; f0 += fieldFog[at] * w; c0 += fieldCloud[at] * w; }
+        wideRain[dst + i] = r0; wideFog[dst + i] = f0; wideCloud[dst + i] = c0;
       }
     }
     var lut = rampLut();
     for (j = 0; j < GH; j++) {
       var yi = j * 4;
       for (i = 0; i < GW; i++) {
-        var rain = 0, fog = 0;
-        for (q = 0; q < 4; q++) { var wy = TY.wt[yi + q], at2 = TY.idx[yi + q] * GW + i; rain += wideRain[at2] * wy; fog += wideFog[at2] * wy; }
+        var rain = 0, fog = 0, cloud = 0;
+        for (q = 0; q < 4; q++) { var wy = TY.wt[yi + q], at2 = TY.idx[yi + q] * GW + i; rain += wideRain[at2] * wy; fog += wideFog[at2] * wy; cloud += wideCloud[at2] * wy; }
         var k = (j * GW + i) * 4;
-        if (rain < 0.06 && fog < 0.15) { d[k + 3] = 0; continue; }
+        if (rain < 0.06 && fog < 0.15 && cloud < 0.03) { d[k + 3] = 0; continue; }
         rain = rain > 1 ? 1 : rain < 0 ? 0 : rain;
         fog = fog > 1 ? 1 : fog < 0 ? 0 : fog;
+        cloud = cloud > 1 ? 1 : cloud < 0 ? 0 : cloud;
         var li = Math.round(rain * 1023) * 4, ra = lut[li + 3];
         var fa = smoothstep(0.15, 0.6, fog) * 0.16 * (1 - ra);
-        var a = (ra + fa) * state.opacity;
+        // Cloud is a fainter white veil under rain and fog, broken into patches when partly cloudy.
+        var ca = cloud * 0.14 * (1 - ra) * (1 - fa / 0.16);
+        // Fade out over a rounded rectangle with a wobbling edge, so wide rain or fog never ends in a straight line.
+        var a = (ra + fa + ca) * state.opacity * edgeMask(i, j);
         if (a < 0.01) { d[k + 3] = 0; continue; }
-        var sum = ra + fa;
-        d[k] = (lut[li] * ra + 176 * fa) / sum; d[k + 1] = (lut[li + 1] * ra + 176 * fa) / sum; d[k + 2] = (lut[li + 2] * ra + 166 * fa) / sum;
+        var sum = ra + fa + ca;
+        d[k] = (lut[li] * ra + 176 * fa + 214 * ca) / sum; d[k + 1] = (lut[li + 1] * ra + 176 * fa + 218 * ca) / sum; d[k + 2] = (lut[li + 2] * ra + 166 * fa + 216 * ca) / sum;
         d[k + 3] = (a > 1 ? 1 : a) * 255;
       }
     }

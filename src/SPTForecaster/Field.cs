@@ -68,7 +68,7 @@ namespace SPTForecaster
 
         internal sealed class Cell
         {
-            public bool Fog, Plateau;
+            public bool Fog, Plateau, Coast;
             public double Birth, Life, X0, Y0, Vx, Vy, Ang, Width, Length, Peak, Trail, Curve;
         }
 
@@ -76,6 +76,25 @@ namespace SPTForecaster
         private static readonly Dictionary<long, List<Cell>> CellCache = new Dictionary<long, List<Cell>>();
         private static readonly Dictionary<long, string> PatternCache = new Dictionary<long, string>();
         private static int _seed;
+        private static string _forcedPattern;
+
+        /// <summary>
+        /// Debug: one pattern for every period ("fair", "unsettled", "longrain", "coastfog", "storms"), or
+        /// null for the seeded ones. Storms are generated from the pattern, so changing it drops them.
+        /// </summary>
+        public static string ForcedPattern
+        {
+            get => _forcedPattern;
+            set
+            {
+                lock (Gate)
+                {
+                    if (value == _forcedPattern) return;
+                    _forcedPattern = value;
+                    CellCache.Clear();
+                }
+            }
+        }
 
         /// <summary>The seed from the server; a new seed clears everything derived from the old one.</summary>
         public static int Seed
@@ -144,6 +163,7 @@ namespace SPTForecaster
         {
             lock (Gate)
             {
+                if (_forcedPattern != null) return _forcedPattern;
                 if (PatternCache.TryGetValue(p, out var key)) return key;
                 var r = new Rng(Mix(Seed ^ 0x5bd1e995, (int)p));
                 var total = 0;
@@ -203,8 +223,9 @@ namespace SPTForecaster
 
             if (kindName == "coastfog")
             {
-                // Lies along the coast (north-south), drifting only a little on or off shore.
-                c.Ang = 0; c.Vx = (r.Next() - 0.5) * 0.0006; c.Vy = 0;
+                // Lies along the coast (north-south), drifting only a little on or off shore. CellValue
+                // moves it with the hour and roughs up its landward edge.
+                c.Ang = 0; c.Vx = (r.Next() - 0.5) * 0.0006; c.Vy = 0; c.Coast = true;
                 c.X0 = CoastX + (r.Next() - 0.5) * 24; c.Y0 = CoastY + (r.Next() - 0.5) * 40;
             }
             else if (kindName == "shield")
@@ -305,6 +326,14 @@ namespace SPTForecaster
             var env = c.Plateau ? Smoothstep(0, 0.12, age) * (1 - Smoothstep(0.85, 1, age)) : Math.Pow(Math.Sin(Math.PI * age), 0.7);
             var dx = x - (c.X0 + c.Vx * (t - c.Birth));
             var dy = y - (c.Y0 + c.Vy * (t - c.Birth));
+            if (c.Coast)
+            {
+                // A marine layer comes ashore overnight and pulls back offshore as the day warms, and its
+                // edge is ragged, tongues of fog reaching inland with clear gaps between, never a ruler line.
+                dx -= 20 * (FogHour(t) - 0.5);
+                dx += 40 * (VNoise(y / 38 + 11.3, t / 5400, 3.7) - 0.5);
+            }
+
             double ca = Math.Cos(c.Ang), sa = Math.Sin(c.Ang);
             var along = dx * ca + dy * sa;
             var across = -dx * sa + dy * ca;
@@ -334,7 +363,43 @@ namespace SPTForecaster
                 rain = Math.Min(1, rain * Math.Max(0, 0.05 + 1.55 * tex * tex + 0.25 * tex));
             }
 
-            if (fog > 0.01) fog = Math.Min(1, fog * (0.75 + 0.4 * VNoise(wx / 90 + 5.1, wy / 90 + 9.3, z * 0.5)));
+            // Fog is broken into banks and thinner patches, and mostly burns off by midday.
+            if (fog > 0.01) fog = Math.Min(1, fog * FogHour(t) * (0.3 + 1.1 * Fbm(wx / 48 + 5.1, wy / 48 + 9.3, z * 0.35)));
+        }
+
+        /// <summary>
+        /// Cloudiness on the game's scale (-1 clear .. 1 thundercloud, 1.2 under rain) at frame x: the
+        /// pattern's sky, a slow wave across the region, and whatever rain is near. Locations and the radar
+        /// both read it here, so the clouds on the map are the clouds in the forecast.
+        /// </summary>
+        private static double SkyClouds(double x, double t, double rain, bool raining)
+        {
+            var baseClouds = Math.Max(-1, Math.Min(1, PatternClouds(t) + 0.25 * Math.Sin(t / 9000.0 + x / 90)));
+            return raining ? Math.Min(1.2, 0.85 + 0.4 * rain) : Math.Min(1, baseClouds + 1.6 * rain);
+        }
+
+        /// <summary>
+        /// Cloud on the radar (0..1) at a point: the share of sky the cloudiness covers, drawn as broken
+        /// cloud, so a partly cloudy spot has patches with gaps between and an overcast one is nearly solid.
+        /// The patches change shape slowly over in-game hours.
+        /// </summary>
+        public static double CloudCover(double x, double y, double t, double rain)
+        {
+            var clouds = SkyClouds(x, t, rain, rain >= RainSteps[0]);
+            var cover = Math.Max(0, Math.Min(1, (clouds + 0.9) / 1.9));
+            var n = (Fbm(x / 60 + 3.7, y / 60 + 1.9, t / 2700) - 0.25) / 0.5;
+            return Smoothstep(1 - cover - 0.28, 1 - cover + 0.28, n);
+        }
+
+        /// <summary>
+        /// How much fog the hour allows: all of it from evening through mid-morning, a little over an eighth
+        /// in the afternoon, when the sun has burnt it off. Every fog the field makes goes through this, so
+        /// fog comes and goes with the day instead of sitting over the coast for whole patterns.
+        /// </summary>
+        private static double FogHour(double t)
+        {
+            var h = Schedule.Mod(t, Schedule.DaySeconds) / 3600;
+            return 1 - 0.88 * Smoothstep(8.5, 12, h) * (1 - Smoothstep(17.5, 21, h));
         }
 
         private static int Level(double value, double[] steps, int? prev)
@@ -366,8 +431,7 @@ namespace SPTForecaster
                 Wind(t, out var dir, out var strength);
                 rl = Level(rain, RainSteps, rl);
                 fl = Level(fog, FogSteps, fl);
-                var baseClouds = Math.Max(-1, Math.Min(1, PatternClouds(t) + 0.25 * Math.Sin(t / 9000.0 + x / 90)));
-                var clouds = rl > 0 ? Math.Min(1.2, 0.85 + 0.4 * rain) : Math.Min(1, baseClouds + 1.6 * rain);
+                var clouds = SkyClouds(x, t, rain, rl > 0);
                 if (t + Step <= from) continue; // warm-up samples only seed the hysteresis
 
                 result.Add(new Block

@@ -17,7 +17,15 @@ namespace SPTForecaster
     internal sealed class ForecastResult
     {
         public ForecastLine Headline;
-        public readonly List<ForecastLine> Lines = new List<ForecastLine>();
+
+        /// <summary>The wind at the start ("Calm", "Breezy", "Strong wind"), or null.</summary>
+        public string Wind;
+
+        /// <summary>Up to two changes during the raid, with the minute they happen at.</summary>
+        public readonly List<ForecastLine> Changes = new List<ForecastLine>();
+
+        /// <summary>"More changes after ~45 min" when more follow than fit, or null.</summary>
+        public ForecastLine More;
 
         /// <summary>One line of plain text, for the log and for comparing forecast with raid.</summary>
         public string Summary
@@ -25,7 +33,9 @@ namespace SPTForecaster
             get
             {
                 var parts = new List<string> { Headline.Text };
-                foreach (var l in Lines) parts.Add(Lower(l.Text));
+                if (Changes.Count == 0 && Wind != null) parts.Add(Lower(Wind));
+                foreach (var l in Changes) parts.Add(Lower(l.Text));
+                if (More != null) parts.Add(Lower(More.Text));
                 return string.Join(", ", parts.ToArray());
             }
         }
@@ -44,6 +54,7 @@ namespace SPTForecaster
         private sealed class Reading
         {
             public string Label;
+            public int Level;
             public bool Wet;
             public bool Foggy;
             public bool ClearSky;
@@ -66,6 +77,7 @@ namespace SPTForecaster
             r.Foggy = b.Fog >= 0.004;
             var fog = b.Fog >= 0.006 ? "Dense fog" : "Fog";
             var level = (int)Math.Round(b.Rain);
+            r.Level = level;
 
             if (level >= 2)
             {
@@ -149,68 +161,65 @@ namespace SPTForecaster
             }
 
             var first = segments[0].Reading;
-            if (segments.Count == 1)
-            {
-                result.Headline = new ForecastLine { Text = first.Label + " all raid", Icon = first.Icon };
-                result.Lines.Add(new ForecastLine { Text = first.Wind });
-                return result;
-            }
+            result.Wind = first.Wind;
 
             // A step that is gone before the card could name a different time for the next one (under 2.5 raid
             // minutes, or rounding to the same ~5 min) is folded into the change after it, so the card reads
-            // "Heavy rain from ~5 min" rather than "Rain from ~5 min, Heavy rain from ~5 min".
+            // "Heavy rain in ~5 min" rather than "Rain in ~5 min, Heavy rain in ~5 min". A step that, after
+            // that, reads the same as the one before is no change at all: cloud wobbling across the partly
+            // cloudy / overcast line used to leave "Clouds breaking up" twice under a partly cloudy headline.
             var steps = new List<Segment> { segments[0] };
             for (var s = 1; s < segments.Count; s++)
             {
                 var next = s + 1 < segments.Count ? segments[s + 1] : null;
                 if (next != null && (next.FromMinute - segments[s].FromMinute < 2.5 || Slot5(next.FromMinute) == Slot5(segments[s].FromMinute))) continue;
+                if (segments[s].Reading.Label == steps[steps.Count - 1].Reading.Label) continue;
                 steps.Add(segments[s]);
+            }
+
+            if (steps.Count == 1)
+            {
+                result.Headline = new ForecastLine { Text = first.Label + " all raid", Icon = first.Icon };
+                return result;
             }
 
             result.Headline = new ForecastLine { Text = first.Label, Icon = first.Icon };
             for (var k = 1; k < steps.Count && k <= 2; k++)
             {
                 var phrase = Change(steps[k - 1].Reading, steps[k].Reading, steps[k].FromMinute);
-                result.Lines.Add(new ForecastLine { Text = char.ToUpperInvariant(phrase[0]) + phrase.Substring(1), Icon = steps[k].Reading.Icon });
+                result.Changes.Add(new ForecastLine { Text = char.ToUpperInvariant(phrase[0]) + phrase.Substring(1), Icon = steps[k].Reading.Icon });
             }
 
             if (steps.Count > 3)
             {
-                result.Lines.Add(new ForecastLine { Text = "More changes after ~" + Round5(steps[3].FromMinute) + " min", Faint = true });
+                result.More = new ForecastLine { Text = "More changes after ~" + Round5(steps[3].FromMinute) + " min", Faint = true };
             }
 
             return result;
         }
 
-        /// <summary>The weather pattern for a raid starting at t, as a card line ("Prolonged rain until ~03:00").</summary>
-        public static ForecastLine PatternLine(double start)
-        {
-            var name = Field.PatternAt(start, out var end);
-            return new ForecastLine { Text = name + " until ~" + Maps.Clock(end), Faint = true };
-        }
-
         private static int Slot5(double minute) => minute < 2.5 ? 0 : (int)Math.Round(minute / 5);
 
+        /// <summary>One change and how far into the raid it comes: "Rain starting in ~15 min", "Skies clearing in ~30 min".</summary>
         private static string Change(Reading prev, Reading cur, double minute)
         {
-            string from, by, at;
-            if (minute < 2.5)
-            {
-                from = by = at = "within minutes";
-            }
-            else
-            {
-                var mm = "~" + Round5(minute) + " min";
-                from = "from " + mm;
-                by = "by " + mm;
-                at = mm;
-            }
+            var when = minute < 2.5 ? "within minutes" : "in ~" + Round5(minute) + " min";
+            var falling = Schedule.Winter ? "Snow" : "Rain";
 
-            if (cur.Wet && !prev.Wet) return ForecastResult.Lower(cur.Label) + " " + from;
-            if (prev.Wet && !cur.Wet) return (Schedule.Winter ? "snow stops " : cur.ClearSky ? "clearing " : "dry ") + by;
-            if (cur.Foggy && !prev.Foggy) return "fog rolling in " + at;
-            if (prev.Foggy && !cur.Foggy) return "fog lifting " + at;
-            return ForecastResult.Lower(cur.Label) + " " + from;
+            if (cur.Wet && !prev.Wet) return cur.Label + " starting " + when;
+            if (prev.Wet && !cur.Wet) return falling + " stopping " + when;
+            if (cur.Wet && cur.Level != prev.Level) return falling + (cur.Level > prev.Level ? " getting heavier " : " easing ") + when;
+            if (cur.Foggy && !prev.Foggy) return "Fog arriving " + when;
+            if (prev.Foggy && !cur.Foggy) return "Fog lifting " + when;
+            if (cur.Foggy && prev.Foggy) return (cur.Label.StartsWith("Dense") || cur.Label.EndsWith("dense fog") ? "Fog thickening " : "Fog thinning ") + when;
+            switch (cur.Label)
+            {
+                case "Clear": return "Skies clearing " + when;
+                case "Partly cloudy": return (prev.Label == "Clear" ? "Clouds building " : "Clouds breaking up ") + when;
+                case "Overcast": return (prev.Label == "Stormy skies" ? "Storm clouds passing " : "Turning overcast ") + when;
+                case "Stormy skies": return "Storm clouds gathering " + when;
+                default: return cur.Label + " " + when;
+            }
         }
 
         private static int Round5(double minute) => Math.Max(5, (int)Math.Round(minute / 5) * 5);

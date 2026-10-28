@@ -34,17 +34,23 @@ namespace SPTForecaster
         }
     }
 
-    /// <summary>The location screen sets up its time panel: attach the forecast.</summary>
+    /// <summary>
+    /// The location screen sets up its time panel: attach the forecast. The same panel is on the
+    /// confirm screen (MatchMakerAcceptScreen) and the raid invite window, which pass takeFromCurrent
+    /// false; the forecast stays off those, so it never sits over the deploy preview Deploy Screen
+    /// Overhaul (LoadingRaid) draws there.
+    /// </summary>
     internal sealed class ConditionsPanelSetPatch : ModulePatch
     {
         protected override MethodBase GetTargetMethod() =>
             AccessTools.Method(typeof(LocationConditionsPanel), nameof(LocationConditionsPanel.Set));
 
         [PatchPostfix]
-        private static void Postfix(LocationConditionsPanel __instance, RaidSettings raidSettings)
+        private static void Postfix(LocationConditionsPanel __instance, RaidSettings raidSettings, bool takeFromCurrent)
         {
             try
             {
+                if (!takeFromCurrent) return;
                 ForecastPanel.Attach(__instance, raidSettings);
             }
             catch (Exception ex)
@@ -65,6 +71,119 @@ namespace SPTForecaster
         {
             var fp = __instance.GetComponent<ForecastPanel>();
             if (fp != null) fp.Tick();
+        }
+    }
+
+    /// <summary>
+    /// Keeps the player's time slot across maps that have none. Selecting Labs or Labyrinth makes the game
+    /// set the slot back to the left one, and nothing puts it back on the next map, so the right slot's
+    /// forecast jumped to the left one's. The slot last picked on any map with the toggles (Factory
+    /// included) is remembered and handed back when such a map is selected again.
+    /// </summary>
+    internal static class SlotMemory
+    {
+        private static readonly AccessTools.FieldRef<MatchMakerSelectionLocationScreen, EDateTime> SelectedTime =
+            AccessTools.FieldRefAccess<MatchMakerSelectionLocationScreen, EDateTime>("_selectedDateTime");
+
+        private static readonly AccessTools.FieldRef<MatchMakerSelectionLocationScreen, RaidSettings> Settings =
+            AccessTools.FieldRefAccess<MatchMakerSelectionLocationScreen, RaidSettings>("_raidSettings");
+
+        private static EDateTime? _chosen;
+
+        /// <summary>
+        /// A map with the two slot toggles. Factory counts: its toggles pick day or night Factory, but they are
+        /// the same left and right slots, so a choice made there carries on to the next map (and back).
+        /// </summary>
+        private static bool FreeChoice(string id) =>
+            id != null && Array.IndexOf(LocationSettings.Location.AvailableMaps, id) >= 0 && id != "laboratory" && !Maps.OneSlot(id);
+
+        /// <summary>The game reports every slot change here, the player's and its own; only an ordinary map's counts.</summary>
+        public static void Record(MatchMakerSelectionLocationScreen screen, EDateTime time)
+        {
+            var id = Settings(screen)?.SelectedLocation?.Id;
+            if (!FreeChoice(id) || _chosen == time) return;
+            _chosen = time;
+            if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo($"Slot: {Name(time)} chosen on {id}.");
+        }
+
+        /// <summary>Before an ordinary map is selected, put the remembered slot back where the game reads it.</summary>
+        public static void Restore(MatchMakerSelectionLocationScreen screen, LocationSettings.Location location)
+        {
+            if (_chosen == null || !FreeChoice(location?.Id)) return;
+            var settings = Settings(screen);
+            if (settings == null || settings.SelectedDateTime == _chosen.Value) return;
+            if (ForecasterPlugin.VerboseLog.Value)
+            {
+                ForecasterPlugin.Log.LogInfo($"Slot: {location.Id} selected with the {Name(settings.SelectedDateTime)} slot; putting back the {Name(_chosen.Value)} one.");
+            }
+
+            SelectedTime(screen) = _chosen.Value;
+            settings.SelectedDateTime = _chosen.Value;
+        }
+
+        /// <summary>
+        /// After a map is selected: if the slot still isn't the chosen one (something between the click and
+        /// the panel reset it), switch the toggle over, the same as the player clicking it.
+        /// </summary>
+        public static void Enforce(MatchMakerSelectionLocationScreen screen, LocationSettings.Location location)
+        {
+            if (_chosen == null || !FreeChoice(location?.Id)) return;
+            var settings = Settings(screen);
+            if (settings == null || settings.SelectedDateTime == _chosen.Value) return;
+            if (ForecasterPlugin.VerboseLog.Value)
+            {
+                ForecasterPlugin.Log.LogInfo($"Slot: {location.Id} ended up on the {Name(settings.SelectedDateTime)} slot after selecting; switching to the {Name(_chosen.Value)} one.");
+            }
+
+            var conditions = screen._conditions;
+            var toggle = conditions == null ? null : _chosen.Value == EDateTime.PAST ? conditions._pmTimeToggle : conditions._amTimeToggle;
+            if (toggle != null && toggle.gameObject.activeInHierarchy) toggle.isOn = true;
+            else screen.UpdateSelectedTime(_chosen.Value);
+        }
+
+        private static string Name(EDateTime time) => time == EDateTime.PAST ? "right" : "left";
+    }
+
+    /// <summary>A slot change on the location screen (a toggle, or the game's own reset).</summary>
+    internal sealed class SlotChangedPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(MatchMakerSelectionLocationScreen), nameof(MatchMakerSelectionLocationScreen.UpdateSelectedTime));
+
+        [PatchPostfix]
+        private static void Postfix(MatchMakerSelectionLocationScreen __instance, EDateTime time) => SlotMemory.Record(__instance, time);
+    }
+
+    /// <summary>A map is clicked on the location screen.</summary>
+    internal sealed class LocationSelectedPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() =>
+            AccessTools.Method(typeof(MatchMakerSelectionLocationScreen), nameof(MatchMakerSelectionLocationScreen.OnLocationSelected));
+
+        [PatchPrefix]
+        private static void Prefix(MatchMakerSelectionLocationScreen __instance, LocationSettings.Location location)
+        {
+            try
+            {
+                SlotMemory.Restore(__instance, location);
+            }
+            catch (Exception ex)
+            {
+                ForecasterPlugin.Log.LogError("Could not keep the time slot: " + ex.Message);
+            }
+        }
+
+        [PatchPostfix]
+        private static void Postfix(MatchMakerSelectionLocationScreen __instance, LocationSettings.Location location)
+        {
+            try
+            {
+                SlotMemory.Enforce(__instance, location);
+            }
+            catch (Exception ex)
+            {
+                ForecasterPlugin.Log.LogError("Could not keep the time slot: " + ex.Message);
+            }
         }
     }
 
@@ -101,8 +220,16 @@ namespace SPTForecaster
         public static bool TryGet(string location, bool rightSlot, out double start)
         {
             start = 0;
+            if (!TryGetLatest(location, out start) || _rightSlot != rightSlot) return false;
+            return true;
+        }
+
+        /// <summary>The last confirmed start on this location, whichever slot it was.</summary>
+        public static bool TryGetLatest(string location, out double start)
+        {
+            start = 0;
             if (_at < 0 || Time.realtimeSinceStartup - _at > MaxAgeSeconds) return false;
-            if (!Maps.Same(_location, location) || _rightSlot != rightSlot) return false;
+            if (!Maps.Same(_location, location)) return false;
             start = _start;
             return true;
         }
@@ -145,7 +272,7 @@ namespace SPTForecaster
         /// default). Blending at least that slowly keeps its clouds in step with the forecast instead of
         /// trailing a change by up to a minute or more.
         /// </summary>
-        private static double BlendRealSeconds()
+        internal static double BlendRealSeconds()
         {
             try
             {
@@ -225,7 +352,7 @@ namespace SPTForecaster
         /// quicker than CloudSix lets its clouds move. Averaging cloud cover over neighbouring blocks spreads
         /// such a change over at least the blend time. Rain and fog are left as they are, so the card stays exact.
         /// </summary>
-        private static void SmoothClouds(List<Block> blocks, double blendRealSeconds)
+        internal static void SmoothClouds(List<Block> blocks, double blendRealSeconds)
         {
             var reach = (int)Math.Ceiling(blendRealSeconds / 240.0); // blocks either side; 2 real min per block
             if (reach < 1 || blocks.Count < 3) return;
