@@ -25,7 +25,17 @@ namespace SPTForecaster
             try
             {
                 Maps.Remember(session?.LocationSettings);
+
+                // Whatever time the radar was given on the last visit is stale now (a raid or a relaunch
+                // ago); the panel gives it a fresh one below if a map is selected, and if none is, the radar
+                // falls back to the remembered slot at the current time.
+                RadarLayer.TargetTime = null;
                 RadarLayer.Attach(__instance._locationButtonsContainer, __instance._locationPathsContainer);
+
+                // The game selects the last map before it shows the screen, so the forecast was first set up
+                // while the screen was hidden: the toggles read as inactive (always the left slot) and the bar's
+                // parts couldn't be found. Now the screen is up, build and read everything again.
+                ForecastPanel.RefreshAll();
             }
             catch (Exception ex)
             {
@@ -89,6 +99,9 @@ namespace SPTForecaster
             AccessTools.FieldRefAccess<MatchMakerSelectionLocationScreen, RaidSettings>("_raidSettings");
 
         private static EDateTime? _chosen;
+
+        /// <summary>Whether the slot last chosen is the right-hand one (+12 h).</summary>
+        public static bool RightSlot => _chosen == EDateTime.PAST;
 
         /// <summary>
         /// A map with the two slot toggles. Factory counts: its toggles pick day or night Factory, but they are

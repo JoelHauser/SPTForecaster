@@ -2,7 +2,7 @@
 
 Weather for SPT's location screen: a radar over the map showing storms moving across the region, and a forecast on top of the time bar saying what the weather will do during that raid. Each map has its own weather, and the raid gets exactly what the forecast said.
 
-**Status: 0.0.2 pre-release, not yet tested in game.** Requires SPT 4.1.
+**Status: 0.1.0.** The location screen (radar and forecast) is tested in game; in-raid weather matching the forecast is not confirmed yet. Requires SPT 4.1.
 
 ## Install
 
@@ -21,7 +21,7 @@ Both halves are needed. Settings (F12):
 - [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast. SPTForecaster reads CloudSix's "Min Cloud Transition Time" and keeps cloud changes at least that gradual, so the clouds keep pace with the card.
 - [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): its faction map shows through underneath the radar.
 
-Previews (open in a browser): [docs/radar-prototype.html](docs/radar-prototype.html) is the radar and forecast as built in 0.0.2; [docs/forecast-preview.html](docs/forecast-preview.html) is the earlier single-schedule design.
+Previews (open in a browser): [docs/radar-prototype.html](docs/radar-prototype.html) is the radar and forecast model the mod is built from; [docs/forecast-preview.html](docs/forecast-preview.html) is the earlier single-schedule design.
 
 ## What it shows
 

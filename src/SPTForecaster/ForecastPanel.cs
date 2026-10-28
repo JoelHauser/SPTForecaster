@@ -50,7 +50,13 @@ namespace SPTForecaster
 
         private void OnEnable() => Live.Add(this);
 
-        private void OnDisable() => Live.Remove(this);
+        private void OnDisable()
+        {
+            Live.Remove(this);
+            // The panel closes for Labs (no time slots): let the radar fall back to the remembered slot
+            // instead of keeping the time this panel last gave it, which goes stale.
+            RadarLayer.TargetTime = null;
+        }
 
         /// <summary>Called from the panel's UpdateConditions postfix, every frame the panel is up.</summary>
         public void Tick()
@@ -104,7 +110,7 @@ namespace SPTForecaster
             _nextRefresh = Time.unscaledTime + RefreshInterval;
             try
             {
-                var now = Schedule.TarkovNow + ForecasterPlugin.PreviewHours.Value * 3600.0;
+                var now = Schedule.ScreenNow;
                 var rightSelected = _panel._pmTimeToggle != null && _panel._pmTimeToggle.isOn && _panel._pmTimeToggle.gameObject.activeInHierarchy;
                 var start = rightSelected ? now + Schedule.HalfDaySeconds : now;
                 RadarLayer.TargetTime = start;

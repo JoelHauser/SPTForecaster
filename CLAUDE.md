@@ -6,18 +6,15 @@ both. Each map has its own weather, read from one storm field. Two halves: a Bep
 https://github.com/JoelHauser/SPTForecaster (public). Design: README.md. Browser prototype the client's
 weather model is ported from: docs/radar-prototype.html (keep the two in step).
 
-## NEXT: first in-game test of 0.0.2
+## NEXT: in-raid weather in 0.1.0
 
-0.0.2 is the radar build (0.0.1 was a single shared schedule and is superseded). The location screen was
-seen in game once (a screenshot, 2026-10-27, not on the home PC, where it isn't installed): forecast text
-overlapped and the radar's fog veil cut the map off; both reworked since (uncommitted, unrun). Raid
-weather is still **never run in game.**
-The server half was run on the work machine (SPT 4.1, C:\HUH): it loads, saves weather-seed.json and the
-route answers. The client's weather model (Field, RadarRenderer, Forecast) was run outside the game in a
-console harness with stubbed game types: radar frames 3-11 ms on .NET 10 (Mono will be slower; it runs
-on a worker thread), 1,920 cards with no repeated change time and the raid's read always equal to the
-card, and rendered frames matched the prototype. The UI in game is unseen. See "What the first test has
-to look at".
+0.1.0 (released 2026-10-27, v0.1.0) is the first release from the home PC (H:\SPT4.1.X). The location
+screen was worked over in game the same day: forecast box, clouds and fog on the radar, edge fade, slot
+memory across Labs/Factory, start-up radar time, debug settings (all confirmed by Joel). **In-raid
+weather following the forecast has never been seen**: no `Raid weather for ...` log line yet. The next
+test is a raid: does the weather match the card, and does a named change happen around its minute?
+(Set the debug settings back to Off / 0 first.) Earlier: the server half ran on the work machine; the
+weather model ran in a console harness (radar frames 3-11 ms, cards consistent with raid reads).
 
 ## Building
 
@@ -133,6 +130,17 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
   cache cleared; radar, forecast and raid all follow). `Preview hours ahead` (0-48) adds to `now` in
   `ForecastPanel.Refresh` only, so the location screen's radar and box move ahead; raids keep real time
   (WeatherLock and SetWeatherNodesPatch read the unshifted clock).
+- **Screen opening:** `ShowInternal` calls `OnLocationSelected` (so `Set`, so our attach) *before*
+  `ShowGameObject`, so the toggles read inactive (left slot) and the bar lookups (active-only) can miss.
+  The `Show` postfix now calls `ForecastPanel.RefreshAll()` once the screen is up. The radar hides its
+  picture on every reopen (`Restart`) and drops any render finished for a time the screen no longer
+  shows (`_pendingTime`), so no old picture shows. Joel saw "the previous forecast" over the map after a
+  relaunch until he clicked a map (2026-10-27). That alone did not fix it: the log showed no map is
+  selected when the screen opens after a relaunch (the box only appears on the first click), and the
+  radar's fallback with no panel was plain `TarkovNow`, ignoring the slot and the preview offset; on
+  later visits `TargetTime` was the stale absolute time from the last visit. Now the Show postfix clears
+  `TargetTime`, the panel clears it on `OnDisable` (Labs), and the radar's fallback is
+  `Schedule.ScreenNow` (TarkovNow + preview) plus 12 h if `SlotMemory.RightSlot`. Unverified in game.
 - **Maps without a forecast:** factory4_day/night, laboratory, Labyrinth, icebreaker, hideout. Icebreaker:
   right toggle hidden, clock text forced to 23:00:00 every frame. The radar still shows over the region.
 
@@ -163,8 +171,8 @@ touches button colours.
 
 ## What the first test has to look at
 
-1. Server console: `[SPTForecaster] 0.0.2 loaded, weather seed ready.` BepInEx log:
-   `SPTForecaster 0.0.2 loaded.`, `Radar attached under '...' at sibling N, size WxH`, no "Could not ...".
+1. Server console: `[SPTForecaster] 0.1.0 loaded, weather seed ready.` BepInEx log:
+   `SPTForecaster 0.1.0 loaded.`, `Radar attached under '...' at sibling N, size WxH`, no "Could not ...".
 2. Radar on the map: lined up with the buttons? Above the map art, below the buttons and route lines?
    Light rain see-through? With TushonkaTerritories, its colours visible underneath? F12 opacity works?
    Any hitch when it redraws (every 5 s)?

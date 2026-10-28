@@ -22,6 +22,12 @@ namespace SPTForecaster
         /// <summary>The Tarkov second to show: the selected slot's raid start (set by the forecast panel).</summary>
         public static double? TargetTime;
 
+        /// <summary>
+        /// What to show when the forecast panel isn't up (no map selected yet, or Labs): the slot the player
+        /// last chose, at the same "now" the panel uses, so selecting a map doesn't make the radar jump.
+        /// </summary>
+        private static double ShownTime => TargetTime ?? Schedule.ScreenNow + (SlotMemory.RightSlot ? Schedule.HalfDaySeconds : 0);
+
         private static RadarLayer _live;
 
         private RawImage _image;
@@ -29,6 +35,7 @@ namespace SPTForecaster
         private Task<Color32[]> _pending;
         private float _nextRedraw;
         private double _lastTime = double.NaN;
+        private double _pendingTime;
         private float _lastOpacity = -1f;
         private bool _lastWinter;
 
@@ -42,6 +49,7 @@ namespace SPTForecaster
                 if (existing != null)
                 {
                     _live = existing.GetComponent<RadarLayer>();
+                    if (_live != null) _live.Restart();
                     return;
                 }
 
@@ -86,15 +94,30 @@ namespace SPTForecaster
             if (_live != null) _live._nextRedraw = 0;
         }
 
+        /// <summary>
+        /// The location screen is opening again. Hide the old picture (it can be hours old, from the last
+        /// visit or another slot) until one for what the screen now shows has been drawn.
+        /// </summary>
+        private void Restart()
+        {
+            _image.enabled = false;
+            _lastTime = double.NaN;
+            _nextRedraw = 0;
+        }
+
         private void Update()
         {
             try
             {
+                var t = ShownTime;
                 if (_pending != null && _pending.IsCompleted)
                 {
                     var task = _pending;
                     _pending = null;
-                    if (task.Status == TaskStatus.RanToCompletion) Upload(task.Result);
+                    // A picture drawn for a time the screen no longer shows (the slot or the screen changed
+                    // while it rendered, or it was started before the forecast said which slot) is dropped.
+                    if (Math.Abs(_pendingTime - t) > 60 * Schedule.Acceleration) _lastTime = double.NaN;
+                    else if (task.Status == TaskStatus.RanToCompletion) Upload(task.Result);
                     else ForecasterPlugin.Log.LogError("Radar render failed: " + task.Exception?.GetBaseException());
                 }
 
@@ -104,7 +127,6 @@ namespace SPTForecaster
                     return;
                 }
 
-                var t = TargetTime ?? Schedule.TarkovNow;
                 var opacity = ForecasterPlugin.RadarOpacity.Value;
                 var changed = Math.Abs(t - _lastTime) > 60 * Schedule.Acceleration || opacity != _lastOpacity || Schedule.Winter != _lastWinter;
                 if (_pending != null || (Time.unscaledTime < _nextRedraw && !changed)) return;
@@ -112,6 +134,7 @@ namespace SPTForecaster
 
                 _nextRedraw = Time.unscaledTime + RedrawSeconds;
                 _lastTime = t;
+                _pendingTime = t;
                 _lastOpacity = opacity;
                 _lastWinter = Schedule.Winter;
                 var winter = Schedule.Winter;

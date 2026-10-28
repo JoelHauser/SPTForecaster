@@ -52,6 +52,9 @@ namespace SPTForecaster
         public static double TarkovNow =>
             OffsetSeconds + (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds * Acceleration;
 
+        /// <summary>"Now" as the location screen shows it: the Tarkov clock plus the debug preview offset. Raids use TarkovNow.</summary>
+        public static double ScreenNow => TarkovNow + ForecasterPlugin.PreviewHours.Value * 3600.0;
+
         /// <summary>
         /// Whether the server's seed is in hand, fetching it if it is missing or a minute old. False when the
         /// server mod is not answering. Main thread only (it uses Time and SPT's request handler).
