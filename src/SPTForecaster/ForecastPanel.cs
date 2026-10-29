@@ -48,6 +48,33 @@ namespace SPTForecaster
             }
         }
 
+        /// <summary>
+        /// What sits over the map's bottom edge: each live time panel, and the forecast box on top of it
+        /// when it shows. The radar key keeps clear of these.
+        /// </summary>
+        public static IEnumerable<RectTransform> Covering()
+        {
+            foreach (var fp in Live)
+            {
+                if (fp == null || fp._panel == null || !fp._panel.gameObject.activeInHierarchy) continue;
+                yield return (RectTransform)fp._panel.transform;
+                var box = fp._view?.Rect;
+                if (box != null) yield return box;
+            }
+        }
+
+        /// <summary>The showing forecast box's slot for the radar's slider and key, or null.</summary>
+        public static RectTransform KeySlot()
+        {
+            foreach (var fp in Live)
+            {
+                var slot = fp != null ? fp._view?.KeySlot : null;
+                if (slot != null) return slot;
+            }
+
+            return null;
+        }
+
         private void OnEnable() => Live.Add(this);
 
         private void OnDisable()

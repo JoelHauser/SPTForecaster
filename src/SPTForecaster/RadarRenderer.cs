@@ -160,18 +160,17 @@ namespace SPTForecaster
         private static readonly object Gate = new object();
         private static readonly float[] Rain = new float[GridW * GridH], Fog = new float[GridW * GridH], Cloud = new float[GridW * GridH];
         private static readonly float[] WideRain = new float[GridH * Width], WideFog = new float[GridH * Width], WideCloud = new float[GridH * Width];
-        private static readonly Color32[] Pixels = new Color32[Width * Height];
-
         /// <summary>
-        /// The radar at Tarkov second <paramref name="t"/>, bottom row first (Unity's texture order). The array
-        /// returned is reused by the next call: upload it before rendering again.
+        /// The radar at Tarkov second <paramref name="t"/> into <paramref name="into"/> (Width x Height, every
+        /// pixel written), bottom row first (Unity's texture order). The caller owns the buffers, so playback
+        /// can keep several frames rendered ahead.
         /// </summary>
-        public static Color32[] Render(double t, float opacity, bool winter)
+        public static Color32[] Render(double t, float opacity, bool winter, Color32[] into)
         {
-            lock (Gate) return RenderLocked(t, opacity, winter);
+            lock (Gate) return RenderLocked(t, opacity, winter, into);
         }
 
-        private static Color32[] RenderLocked(double t, float opacity, bool winter)
+        private static Color32[] RenderLocked(double t, float opacity, bool winter, Color32[] into)
         {
             var cells = Field.ActiveCells(t);
             float[] rain = Rain, fog = Fog, cloud = Cloud;
@@ -205,7 +204,7 @@ namespace SPTForecaster
             }
 
             var lut = Lut(winter);
-            var pixels = Pixels;
+            var pixels = into;
             for (var j = 0; j < Height; j++)
             {
                 var row = (Height - 1 - j) * Width; // frame y runs down; texture rows run up

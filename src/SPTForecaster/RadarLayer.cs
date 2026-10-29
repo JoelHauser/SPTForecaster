@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -24,9 +25,29 @@ namespace SPTForecaster
     internal sealed class RadarLayer : MonoBehaviour
     {
         private const float RedrawSeconds = 5f;
-        private const float PlaySeconds = 12f, HoldSeconds = 1f, FadeSeconds = 0.5f, WaitSeconds = 0.5f;
+        // A short wait, so clicking through maps doesn't restart playback on every map passed (0.5 s plus the
+        // full opening hold read as a slow start, 2026-10-29); the first play skips most of its opening hold.
+        private const float PlaySeconds = 12f, HoldSeconds = 1f, FadeSeconds = 0.5f, WaitSeconds = 0.15f, FirstHoldSeconds = 0.2f;
         private const int Plays = 2;
-        private const float FrameSeconds = 1f / 30f;
+
+        /// <summary>
+        /// Playback runs on a fixed timeline of <see cref="PlayFps"/> frames a second, rendered up to
+        /// <see cref="Ahead"/> frames before they're due and shown exactly on time. Rendering each frame only
+        /// once the last was up (0.2.1) showed the storms in uneven steps, a frame that took longer (new
+        /// cells, a busy thread pool) holding the picture and then jumping ("hitches and stutters", 2026-10-29).
+        /// </summary>
+        private const int PlayFps = 24, Ahead = 10;
+        private const int PlayFrames = (int)(PlaySeconds * PlayFps);   // steps per play; frames 0..PlayFrames
+        private const int PerPlay = PlayFrames + 1;
+
+        private sealed class Frame
+        {
+            public int Index, Generation;
+            public double Time;
+            public bool Rest;
+            public Color32[] Pixels;
+            public double RenderMs;
+        }
 
         /// <summary>The Tarkov second to show: the selected slot's raid start (set by the forecast panel).</summary>
         public static double? TargetTime;
@@ -52,16 +73,27 @@ namespace SPTForecaster
 
         private RawImage _image;
         private Texture2D _texture;
-        private Task<Color32[]> _pending;
+        private Task<Frame> _pending;
         private float _nextRedraw;
         private double _lastTime = double.NaN;
-        private double _pendingTime;
         private float _lastOpacity = -1f;
         private bool _lastWinter;
 
-        private float _queuedAt = -1f, _playStart = -1f, _restFrom = -1f, _nextFrame;
+        private float _queuedAt = -1f, _playStart = -1f, _restFrom = -1f;
         private bool _playing;
+        private int _play;
         private float _scrub, _alpha = 1f;
+
+        // Playback frames: buffers to render into, frames rendered and waiting, the next index to render, and
+        // a generation that drops frames rendered for a slot or start the screen no longer shows.
+        private readonly Stack<Color32[]> _free = new Stack<Color32[]>();
+        private readonly Queue<Frame> _ready = new Queue<Frame>();
+        private int _nextIndex, _generation;
+
+        // Playback timings, for the verbose log.
+        private int _frames, _late;
+        private double _renderMs, _uploadMs, _worstUploadMs, _worstRenderMs;
+        private readonly System.Diagnostics.Stopwatch _clock = new System.Diagnostics.Stopwatch();
 
         /// <summary>
         /// The forecast panel's slot, every refresh. A different map or slot (re)starts playback after a short
@@ -80,6 +112,12 @@ namespace SPTForecaster
 
         private void Queue(bool play)
         {
+            LogPlayback();
+            _generation++;
+            DropReady();
+            _nextIndex = 0;
+            _frames = _late = 0;
+            _renderMs = _uploadMs = _worstUploadMs = _worstRenderMs = 0;
             _playing = false;
             _scrub = 0f;
             _restFrom = -1f;
@@ -96,7 +134,7 @@ namespace SPTForecaster
             {
                 _queuedAt = -1f;
                 _playing = true;
-                _playStart = now;
+                _playStart = now - (HoldSeconds - FirstHoldSeconds);
             }
 
             if (_playing && (TargetTime == null || !ForecasterPlugin.PlayRadar.Value)) Queue(false);
@@ -108,11 +146,16 @@ namespace SPTForecaster
                 var c = now - _playStart;
                 var n = (int)(c / cycle);
                 var w = c - n * cycle;
+                _play = n;
                 if (n >= Plays)
                 {
+                    LogPlayback();
                     _playing = false;
                     _scrub = 0f;
                     _restFrom = now;
+                    _generation++;
+                    DropReady();
+                    _lastTime = double.NaN; // draw the rest picture again
                 }
                 else if (w < HoldSeconds)
                 {
@@ -176,6 +219,13 @@ namespace SPTForecaster
                 go.transform.SetSiblingIndex(index);
 
                 go.AddComponent<LayoutElement>().ignoreLayout = true;
+
+                // Its own canvas. Playback changes the picture's fade, the readout's text and its bar many
+                // times a second, and inside the screen's canvas every change made Unity rebuild the whole
+                // location screen's UI (frame-time spikes during playback, 2026-10-29). The key and the
+                // readout are children, so they're in here too. Still drawn in its place in the hierarchy.
+                go.AddComponent<Canvas>();
+
                 var layer = go.AddComponent<RadarLayer>();
                 layer._image = go.AddComponent<RawImage>();
                 layer._image.raycastTarget = false;
@@ -219,17 +269,7 @@ namespace SPTForecaster
                 var now = Time.unscaledTime;
                 Advance(now);
                 _image.color = new Color(1f, 1f, 1f, _alpha);
-                var t = ShownTime;
-                if (_pending != null && _pending.IsCompleted)
-                {
-                    var task = _pending;
-                    _pending = null;
-                    // A picture drawn for a time the screen no longer shows (the slot or the screen changed
-                    // while it rendered, or it was started before the forecast said which slot) is dropped.
-                    if (Math.Abs(_pendingTime - t) > 60 * Schedule.Acceleration) _lastTime = double.NaN;
-                    else if (task.Status == TaskStatus.RanToCompletion) Upload(task.Result);
-                    else ForecasterPlugin.Log.LogError("Radar render failed: " + task.Exception?.GetBaseException());
-                }
+                Collect();
 
                 if (!ForecasterPlugin.ShowRadar.Value)
                 {
@@ -237,21 +277,8 @@ namespace SPTForecaster
                     return;
                 }
 
-                var opacity = ForecasterPlugin.RadarOpacity.Value;
-                var changed = Math.Abs(t - _lastTime) > 60 * Schedule.Acceleration || opacity != _lastOpacity || Schedule.Winter != _lastWinter;
-                // While playing, a new frame as soon as the last is up (at most 30 a second).
-                if (_playing && t != _lastTime && now >= _nextFrame) changed = true;
-                if (_pending != null || (now < _nextRedraw && !changed)) return;
-                if (!Schedule.Ready()) return;
-
-                _nextRedraw = now + RedrawSeconds;
-                _nextFrame = now + FrameSeconds;
-                _lastTime = t;
-                _pendingTime = t;
-                _lastOpacity = opacity;
-                _lastWinter = Schedule.Winter;
-                var winter = Schedule.Winter;
-                _pending = Task.Run(() => RadarRenderer.Render(t, opacity, winter));
+                if (_playing || _queuedAt >= 0f) PlayFramesNow();
+                else RestFrame(now);
             }
             catch (Exception ex)
             {
@@ -259,6 +286,121 @@ namespace SPTForecaster
                 _nextRedraw = Time.unscaledTime + 30f;
                 Queue(false);
             }
+        }
+
+        /// <summary>A finished render: a playback frame joins the queue; a rest picture is shown if still current.</summary>
+        private void Collect()
+        {
+            if (_pending == null || !_pending.IsCompleted) return;
+            var task = _pending;
+            _pending = null;
+            if (task.Status != TaskStatus.RanToCompletion)
+            {
+                ForecasterPlugin.Log.LogError("Radar render failed: " + task.Exception?.GetBaseException());
+                _lastTime = double.NaN;
+                return;
+            }
+
+            var frame = task.Result;
+            _worstRenderMs = Math.Max(_worstRenderMs, frame.RenderMs);
+            if (frame.Generation != _generation)
+            {
+                _free.Push(frame.Pixels);
+                if (frame.Rest) _lastTime = double.NaN;
+            }
+            else if (frame.Rest)
+            {
+                // A picture drawn for a time the screen no longer shows (the slot changed while it rendered,
+                // or it was started before the forecast said which slot) is dropped.
+                if (Math.Abs(frame.Time - ShownTime) > 60 * Schedule.Acceleration) _lastTime = double.NaN;
+                else Upload(frame.Pixels);
+                _free.Push(frame.Pixels);
+            }
+            else
+            {
+                _renderMs += frame.RenderMs;
+                _ready.Enqueue(frame);
+            }
+        }
+
+        /// <summary>
+        /// Playback: show the frame due now (the newest rendered one not past it), and keep rendering ahead.
+        /// Also runs while playback waits to start, so the first frames are ready when it does.
+        /// </summary>
+        private void PlayFramesNow()
+        {
+            var due = _playing ? Math.Min(_play, Plays - 1) * PerPlay + Mathf.RoundToInt(_scrub * PlayFrames) : 0;
+
+            Frame show = null;
+            while (_ready.Count > 0 && _ready.Peek().Index <= due)
+            {
+                if (show != null) _free.Push(show.Pixels);
+                show = _ready.Dequeue();
+            }
+
+            if (show != null)
+            {
+                if (show.Index < due) _late++;
+                Upload(show.Pixels);
+                _free.Push(show.Pixels);
+            }
+
+            if (_pending != null || !Schedule.Ready()) return;
+            // Fallen behind: skip to what is due rather than draw frames that would never show.
+            if (_nextIndex < due) _nextIndex = due;
+            if (_nextIndex >= Plays * PerPlay || _nextIndex > due + Ahead) return;
+
+            var index = _nextIndex++;
+            var t = RestTime + (index % PerPlay) / (double)PlayFrames * RaidMinutes * 60.0 * Schedule.Acceleration;
+            Render(t, index, false);
+        }
+
+        /// <summary>At rest: the raid's start, redrawn every few seconds as the clock moves or when a setting changes.</summary>
+        private void RestFrame(float now)
+        {
+            var t = ShownTime;
+            var opacity = ForecasterPlugin.RadarOpacity.Value;
+            var changed = Math.Abs(t - _lastTime) > 60 * Schedule.Acceleration || opacity != _lastOpacity || Schedule.Winter != _lastWinter;
+            if (_pending != null || (now < _nextRedraw && !changed)) return;
+            if (!Schedule.Ready()) return;
+
+            _nextRedraw = now + RedrawSeconds;
+            _lastTime = t;
+            _lastOpacity = opacity;
+            _lastWinter = Schedule.Winter;
+            Render(t, -1, true);
+        }
+
+        private void Render(double t, int index, bool rest)
+        {
+            var into = _free.Count > 0 ? _free.Pop() : new Color32[RadarRenderer.Width * RadarRenderer.Height];
+            var frame = new Frame { Index = index, Generation = _generation, Time = t, Rest = rest, Pixels = into };
+            var opacity = ForecasterPlugin.RadarOpacity.Value;
+            var winter = Schedule.Winter;
+            _pending = Task.Run(() =>
+            {
+                var started = System.Diagnostics.Stopwatch.GetTimestamp();
+                RadarRenderer.Render(frame.Time, opacity, winter, frame.Pixels);
+                frame.RenderMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                return frame;
+            });
+        }
+
+        private void DropReady()
+        {
+            while (_ready.Count > 0) _free.Push(_ready.Dequeue().Pixels);
+        }
+
+        private void LogPlayback()
+        {
+            if (ForecasterPlugin.VerboseLog.Value && _frames > 0)
+            {
+                ForecasterPlugin.Log.LogInfo($"Radar playback: {_frames} frames shown ({_late} late), render {_renderMs / _frames:0.0} ms avg / {_worstRenderMs:0.0} ms worst (worker), " +
+                                             $"upload {_uploadMs / _frames:0.00} ms avg / {_worstUploadMs:0.00} ms worst (main thread).");
+            }
+
+            _frames = _late = 0;
+            _renderMs = _uploadMs = _worstUploadMs = _worstRenderMs = 0;
         }
 
         private void Upload(Color32[] pixels)
@@ -273,9 +415,17 @@ namespace SPTForecaster
                 _image.texture = _texture;
             }
 
+            _clock.Restart();
             _texture.SetPixels32(pixels);
             _texture.Apply(false);
             _image.enabled = ForecasterPlugin.ShowRadar.Value;
+            if (_playing)
+            {
+                var ms = _clock.Elapsed.TotalMilliseconds;
+                _frames++;
+                _uploadMs += ms;
+                _worstUploadMs = Math.Max(_worstUploadMs, ms);
+            }
         }
 
         private void OnDestroy()

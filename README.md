@@ -2,13 +2,13 @@
 
 A weather forecast and live weather radar for SPT's map select screen. Each map gets its own weather, and what the forecast says is what you get in the raid.
 
-**Status: 0.2.1, test build.** Requires SPT 4.1. The radar and forecast have been tested in game. The newer weather (seasons, fog strengths, blizzards, thunderstorms) has not been tested in game yet.
+**Status: 0.2.2, test build.** Requires SPT 4.1. The radar, forecast, lightning and thunder have been tested in game. Seasons, fog strengths and blizzards have not been tested in game yet.
 
 ## What it does
 
-- **Weather radar.** A radar over the map shows rain, snow, fog and cloud moving across the region. A small key in the corner explains the colours.
+- **Weather radar.** A radar over the map shows rain, snow, fog and cloud moving across the region with the wind, mostly from the west and south-west.
 - **Raid playback.** Pick a map and a time, and the radar plays out the weather for the length of that raid.
-- **Forecast.** A box above the time bar shows the weather when the raid starts, the wind, and up to two changes, for example "Rain starting in ~15 min". It uses the game's own fonts and icons.
+- **Forecast.** A box above the time bar shows the weather when the raid starts and the wind, with the radar's key and the raid playback slider beside it. It uses the game's own fonts and icons.
 - **Weather that matches.** The raid gets exactly the weather the forecast showed. Each map has its own weather, and the two time slots differ.
 - **Realistic weather.** Modelled on St Petersburg, near where Tarkov is set, and following your server's season. Clear and grey spells last, fronts bring rain, and fog forms on calm nights and burns off by midday. Not every raid has rain or fog.
 - **New weather in raid:**

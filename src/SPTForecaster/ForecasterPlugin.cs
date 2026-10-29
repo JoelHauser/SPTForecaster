@@ -8,7 +8,7 @@ namespace SPTForecaster
     public class ForecasterPlugin : BaseUnityPlugin
     {
         /// <summary>Must match the csproj Version and the server mod's.</summary>
-        public const string PluginVersion = "0.2.1";
+        public const string PluginVersion = "0.2.2";
 
         internal static ManualLogSource Log;
 

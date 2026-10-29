@@ -64,7 +64,7 @@ $entries = [ordered]@{
     'SPT_Runtime/user/mods/SPTForecaster/SPTForecaster.Server.dll'   = $serverDll
 }
 # The thunder clips (assets/thunder, cut by tools/thunder_clips.py), next to the plugin.
-foreach ($clip in Get-ChildItem (Join-Path $root 'assets\thunder') -Filter *.ogg) {
+foreach ($clip in Get-ChildItem (Join-Path $root 'assets\thunder') -Filter *.wav) {
     $entries["BepInEx/plugins/SPTForecaster/thunder/$($clip.Name)"] = $clip.FullName
 }
 
@@ -92,7 +92,7 @@ if ($Install) {
     Copy-Item $clientDll (Join-Path $SPTPath 'BepInEx\plugins') -Force
     $thunderDir = Join-Path $SPTPath 'BepInEx\plugins\SPTForecaster\thunder'
     New-Item -ItemType Directory -Force -Path $thunderDir | Out-Null
-    Copy-Item (Join-Path $root 'assets\thunder\*.ogg') $thunderDir -Force
+    Copy-Item (Join-Path $root 'assets\thunder\*.wav') $thunderDir -Force
     $modDir = Join-Path $SPTPath 'SPT_Runtime\user\mods\SPTForecaster'
     New-Item -ItemType Directory -Force -Path $modDir | Out-Null
     Copy-Item $serverDll $modDir -Force

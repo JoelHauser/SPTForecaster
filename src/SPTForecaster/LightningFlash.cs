@@ -16,10 +16,14 @@ namespace SPTForecaster
     /// - Sky light: the game's outdoor ambient (the spherical harmonics ToDController hands AmbientLight
     ///   each frame) gets a blue-white glow, mostly from above. Interiors have their own ambient volumes,
     ///   so it lights the outdoors, and what is seen through windows and doorways, not the rooms.
-    /// - Direct light: a smaller share is added to the sun/moon light, tinted, so windows facing the sky
-    ///   catch it and walls still block it (it uses the light's own shadows and cloud shadows).
+    /// - Direct light: a smaller share is added to the sun/moon light, tinted, and for the flash the light
+    ///   is turned towards straight down (all the way at night, hardly at all against the day's sun), so it
+    ///   comes from the cloud base overhead, not from the moon's side of the sky, and roofs and walls still
+    ///   block it (the light's own shadows). Left at the moon's angle it read as lit from one side, with
+    ///   its source visible (2026-10-29).
     /// - The sky dome (TOD's sky colours) and the clouds light up: the game's clouds take the sun/moon light
-    ///   as they render; CloudSix's are given it through a postfix on its material update.
+    ///   as they render; CloudSix's get an even glow (its ambient colour, not its moon light, which lit only
+    ///   the clouds' moon side) through a postfix on its material update.
     ///
     /// All of it scales with the time of day (lightning barely shows at noon, fills the night) and the
     /// config's brightness. Everything but the light's intensity is rewritten by the game every frame, so
@@ -30,16 +34,41 @@ namespace SPTForecaster
     {
         private static readonly Color Tint = new Color(0.78f, 0.86f, 1f);
 
-        /// <summary>Added at Flash 1, night, brightness 1: sun/moon light, ambient (linear), sky colour.</summary>
-        private const float DirectPeak = 0.5f, AmbientPeak = 0.35f, SkyPeak = 0.6f;
+        /// <summary>
+        /// Added at Flash 1, night, brightness 1: sun/moon light, ambient (linear), sky colour. Lowered from
+        /// 0.5 / 0.45 / 0.6 after "very bright for night time" (2026-10-29); TraceSix also bounces the
+        /// light into its GI, and may keep a flash in a GI slice it refreshed mid-flash for a while.
+        /// </summary>
+        private const float DirectPeak = 0.3f, AmbientPeak = 0.3f, SkyPeak = 0.45f;
+
+        /// <summary>Straight down, the way the light points while it carries the flash.</summary>
+        private static readonly Quaternion Overhead = Quaternion.LookRotation(Vector3.down, Vector3.forward);
 
         private static bool _hooked;
         private static int _frame = -1;
 
-        // The light's intensity as the game last set it, and as we last wrote it.
+        // The light's intensity and direction as the game last set them, and as we last wrote them. Below
+        // shadow quality 3, TOD sets the direction only every second or so, so it has to be put back too.
         private static Light _light;
         private static float _base, _written;
+        private static Quaternion _baseRotation, _writtenRotation;
         private static bool _holding;
+
+        private static bool? _traceSix;
+
+        private static bool TraceSixLoaded
+        {
+            get
+            {
+                if (_traceSix == null)
+                {
+                    _traceSix = BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.matsix.tracesix");
+                    if (_traceSix.Value) ForecasterPlugin.Log.LogInfo("Lightning: TraceSix found, flashes light the sky and ambient only (not its sun).");
+                }
+
+                return _traceSix.Value;
+            }
+        }
 
         public static void Hook()
         {
@@ -87,7 +116,9 @@ namespace SPTForecaster
             if (light == null) return;
 
             // The game's latest intensity: anything other than what we wrote is the game's new value.
+            var turn = light.transform;
             if (!_holding || light != _light || !Mathf.Approximately(light.intensity, _written)) _base = light.intensity;
+            if (!_holding || light != _light || Quaternion.Angle(turn.rotation, _writtenRotation) > 0.01f) _baseRotation = turn.rotation;
             _light = light;
 
             if (f <= 0.001f)
@@ -96,18 +127,30 @@ namespace SPTForecaster
                 return;
             }
 
-            var add = f * DirectPeak;
-            light.intensity = _base + add;
-            light.color = Color.Lerp(light.color, Tint, add / (_base + add + 0.001f));
-            _written = light.intensity;
-            _holding = true;
+            // With TraceSix the sun/moon light is left alone. TraceSix takes the map out of the game's sun
+            // shadow whenever that light shines and gives it back half a second after it stops, so at night
+            // every flash flipped some 40,000 meshes there and back (its log, 2026-10-29). The flash is
+            // then sky and ambient light only, a little stronger.
+            var ambient = AmbientPeak;
+            if (TraceSixLoaded) ambient *= 1.4f;
+            else
+            {
+                var add = f * DirectPeak;
+                var share = add / (_base + add + 0.001f);
+                light.intensity = _base + add;
+                light.color = Color.Lerp(light.color, Tint, share);
+                turn.rotation = Quaternion.Slerp(_baseRotation, Overhead, share);
+                _written = light.intensity;
+                _writtenRotation = turn.rotation;
+                _holding = true;
+            }
 
             var todc = WeatherController.Instance != null ? WeatherController.Instance.TimeOfDayController : null;
             if (todc != null && todc.AmbientLightScript != null)
             {
                 var sh = todc.SH;
-                sh.AddAmbientLight(Tint * (f * AmbientPeak * 0.4f));
-                sh.AddDirectionalLight(Vector3.up, Tint, f * AmbientPeak);
+                sh.AddAmbientLight(Tint * (f * ambient * 0.4f));
+                sh.AddDirectionalLight(Vector3.up, Tint, f * ambient);
                 todc.AmbientLightScript.SetSH(sh);
             }
 
@@ -122,7 +165,12 @@ namespace SPTForecaster
         /// <summary>The flash is over: give the light back the game's intensity.</summary>
         private static void Release()
         {
-            if (_holding && _light != null) _light.intensity = _base;
+            if (_holding && _light != null)
+            {
+                _light.intensity = _base;
+                _light.transform.rotation = _baseRotation;
+            }
+
             _holding = false;
         }
     }
@@ -135,8 +183,6 @@ namespace SPTForecaster
     internal sealed class CloudSixFlashPatch : ModulePatch
     {
         private static bool _tried;
-        private static readonly int MoonIntensity = Shader.PropertyToID("_MoonIntensity");
-        private static readonly int MoonColor = Shader.PropertyToID("_MoonColor");
         private static readonly int AmbientColor = Shader.PropertyToID("_AmbientColor");
         private static readonly Color Tint = new Color(0.78f, 0.86f, 1f);
 
@@ -174,10 +220,9 @@ namespace SPTForecaster
             var f = Thunder.Flash;
             if (f <= 0.001f || cloudMaterial == null) return;
             f = LightningFlash.Visible(f);
-            // Its moon light on the clouds tops out at 0.05; a flash outshines it many times over.
-            cloudMaterial.SetFloat(MoonIntensity, cloudMaterial.GetFloat(MoonIntensity) + f * 1.5f);
-            cloudMaterial.SetColor(MoonColor, Color.Lerp(cloudMaterial.GetColor(MoonColor), Tint, Mathf.Clamp01(f)));
-            cloudMaterial.SetColor(AmbientColor, cloudMaterial.GetColor(AmbientColor) + Tint * (f * 0.5f));
+            // Lightning lights the cloud deck from within, evenly: its ambient colour, not its moon light,
+            // which comes from the moon's side and showed where the "source" was.
+            cloudMaterial.SetColor(AmbientColor, cloudMaterial.GetColor(AmbientColor) + Tint * (f * 1.3f));
         }
     }
 }

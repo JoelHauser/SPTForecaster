@@ -10,7 +10,6 @@ using EFT;
 using EFT.Weather;
 using UnityEngine;
 using UnityEngine.Audio;
-using UnityEngine.Networking;
 using Random = UnityEngine.Random;
 
 namespace SPTForecaster
@@ -51,13 +50,14 @@ namespace SPTForecaster
 
         private readonly List<AudioSource> _sources = new List<AudioSource>();
         private AudioMixerGroup _group;
+        private AudioSource _template;
         private bool _groupLooked;
         private float _nextCheck;
         private readonly List<float[]> _pulses = new List<float[]>(); // start time, length, strength
 
         // ---- clips -----------------------------------------------------------------------------------
 
-        /// <summary>Loads the thunder clips (BepInEx/plugins/SPTForecaster/thunder/*.ogg) once, in the background.</summary>
+        /// <summary>Loads the thunder clips (BepInEx/plugins/SPTForecaster/thunder/*.wav) once, in the background.</summary>
         public static void LoadClips(MonoBehaviour host, string pluginDir)
         {
             if (_loading) return;
@@ -65,6 +65,11 @@ namespace SPTForecaster
             host.StartCoroutine(LoadAll(Path.Combine(Path.Combine(pluginDir, "SPTForecaster"), "thunder")));
         }
 
+        /// <summary>
+        /// Reads the WAV files ourselves (on a worker) and builds the clips from their samples. 0.2.1 loaded
+        /// Ogg Vorbis through UnityWebRequestMultimedia, and in EFT every clip came back "Loaded" but 0 s long,
+        /// so nothing ever played (2026-10-29).
+        /// </summary>
         private static IEnumerator LoadAll(string dir)
         {
             if (!Directory.Exists(dir))
@@ -73,26 +78,133 @@ namespace SPTForecaster
                 yield break;
             }
 
-            foreach (var file in Directory.GetFiles(dir, "*.ogg"))
+            var files = Directory.GetFiles(dir, "*.wav");
+            if (files.Length == 0) ForecasterPlugin.Log.LogWarning("No thunder sounds (*.wav) in " + dir + "; lightning will be silent.");
+            var read = System.Threading.Tasks.Task.Run(() =>
             {
-                var url = "file:///" + file.Replace('\\', '/');
-                using (var request = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.OGGVORBIS))
+                var result = new List<Wav>();
+                foreach (var file in files)
                 {
-                    ((DownloadHandlerAudioClip)request.downloadHandler).streamAudio = false;
-                    yield return request.SendWebRequest();
-                    if (request.result != UnityWebRequest.Result.Success)
+                    try
                     {
-                        ForecasterPlugin.Log.LogWarning("Could not load " + Path.GetFileName(file) + ": " + request.error);
-                        continue;
+                        result.Add(Wav.Read(file));
                     }
-
-                    var clip = DownloadHandlerAudioClip.GetContent(request);
-                    clip.name = Path.GetFileNameWithoutExtension(file);
-                    (clip.name.Contains("_near_") ? Near : Far).Add(clip);
+                    catch (Exception ex)
+                    {
+                        ForecasterPlugin.Log.LogWarning("Could not read " + Path.GetFileName(file) + ": " + ex.Message);
+                    }
                 }
+
+                return result;
+            });
+
+            while (!read.IsCompleted) yield return null;
+            if (read.Exception != null)
+            {
+                ForecasterPlugin.Log.LogError("Thunder sounds failed to load: " + read.Exception.GetBaseException());
+                yield break;
             }
 
-            ForecasterPlugin.Log.LogInfo($"Thunder: {Near.Count} near and {Far.Count} far clips loaded.");
+            Sounds.Clear();
+            Sounds.AddRange(read.Result);
+            BuildClips("loaded");
+            AudioSettings.OnAudioConfigurationChanged += _ => _audioReset = true;
+        }
+
+        /// <summary>The clips' sound, kept so the clips can be made again.</summary>
+        private static readonly List<Wav> Sounds = new List<Wav>();
+        private static bool _audioReset;
+
+        /// <summary>
+        /// (Re)makes every clip from <see cref="Sounds"/>. A clip made in code loses its sound when Unity's
+        /// audio is reset, which happens on the way into a raid: 0.2.2's clips were 120 s long at start-up
+        /// and "Loaded" but 0 s long at every strike, so nothing played (2026-10-29; 0.2.1's Ogg clips the same).
+        /// </summary>
+        private static void BuildClips(string why)
+        {
+            foreach (var c in Near) if (c != null) Destroy(c);
+            foreach (var c in Far) if (c != null) Destroy(c);
+            Near.Clear();
+            Far.Clear();
+            var seconds = 0f;
+            foreach (var wav in Sounds)
+            {
+                var frames = wav.Pcm.Length / wav.Channels;
+                var clip = AudioClip.Create(wav.Name, frames, wav.Channels, wav.Rate, false);
+                var data = new float[wav.Pcm.Length];
+                for (var i = 0; i < data.Length; i++) data[i] = wav.Pcm[i] / 32768f;
+                clip.SetData(data, 0);
+                seconds += clip.length;
+                (wav.Name.Contains("_near_") ? Near : Far).Add(clip);
+            }
+
+            ForecasterPlugin.Log.LogInfo($"Thunder: {Near.Count} near and {Far.Count} far clips {why} ({seconds:0} s of sound).");
+        }
+
+        /// <summary>The clips, made again first if the audio was reset or a clip has lost its sound.</summary>
+        private static void EnsureClips()
+        {
+            var empty = false;
+            foreach (var c in Near) empty |= c == null || c.samples <= 0;
+            foreach (var c in Far) empty |= c == null || c.samples <= 0;
+            if (!_audioReset && !empty) return;
+            BuildClips(_audioReset ? "rebuilt after an audio reset" : "rebuilt (they had lost their sound)");
+            _audioReset = false;
+        }
+
+        /// <summary>A PCM WAV file's samples (16-bit, 24-bit or 32-bit float), kept as 16-bit.</summary>
+        private sealed class Wav
+        {
+            public string Name;
+            public int Channels, Rate;
+            public short[] Pcm;
+
+            public static Wav Read(string path)
+            {
+                var b = File.ReadAllBytes(path);
+                if (b.Length < 12 || b[0] != 'R' || b[1] != 'I' || b[2] != 'F' || b[3] != 'F' || b[8] != 'W' || b[9] != 'A' || b[10] != 'V' || b[11] != 'E')
+                {
+                    throw new InvalidDataException("not a WAV file");
+                }
+
+                int format = 0, channels = 0, rate = 0, bits = 0, at = 12;
+                while (at + 8 <= b.Length)
+                {
+                    var id = System.Text.Encoding.ASCII.GetString(b, at, 4);
+                    var size = BitConverter.ToInt32(b, at + 4);
+                    var body = at + 8;
+                    if (id == "fmt ")
+                    {
+                        format = BitConverter.ToUInt16(b, body);
+                        channels = BitConverter.ToUInt16(b, body + 2);
+                        rate = BitConverter.ToInt32(b, body + 4);
+                        bits = BitConverter.ToUInt16(b, body + 14);
+                        if (format == 0xFFFE && size >= 26) format = BitConverter.ToUInt16(b, body + 24); // extensible
+                    }
+                    else if (id == "data")
+                    {
+                        if (channels <= 0 || rate <= 0) throw new InvalidDataException("data before format");
+                        size = Math.Min(size, b.Length - body);
+                        var step = bits / 8;
+                        var n = size / step;
+                        var samples = new short[n - n % channels];
+                        for (var i = 0; i < samples.Length; i++)
+                        {
+                            var p = body + i * step;
+                            if (format == 1 && bits == 16) samples[i] = BitConverter.ToInt16(b, p);
+                            else if (format == 1 && bits == 24) samples[i] = (short)((b[p + 1] | (sbyte)b[p + 2] << 8));
+                            else if (format == 3 && bits == 32) samples[i] = (short)Math.Round(Math.Max(-1f, Math.Min(1f, BitConverter.ToSingle(b, p))) * 32767f);
+                            else throw new InvalidDataException($"unsupported WAV format {format}, {bits}-bit");
+                        }
+
+                        return new Wav { Name = Path.GetFileNameWithoutExtension(path), Channels = channels, Rate = rate, Pcm = samples };
+                    }
+
+                    at = body + size + (size & 1);
+                }
+
+                throw new InvalidDataException("no audio data");
+            }
         }
 
         // ---- the raid's storms -----------------------------------------------------------------------
@@ -161,7 +273,12 @@ namespace SPTForecaster
             _request = kind;
         }
 
-        private void Awake() => _instance = this;
+        private void Awake()
+        {
+            _instance = this;
+            // A raid: the audio has usually been reset on the way in, which empties the clips.
+            EnsureClips();
+        }
 
         private void Update()
         {
@@ -278,18 +395,36 @@ namespace SPTForecaster
         private IEnumerator Rumble(float metres, float delay)
         {
             yield return new WaitForSecondsRealtime(delay);
+            EnsureClips();
             var pool = metres < 2200f && Near.Count > 0 ? Near : Far.Count > 0 ? Far : Near;
-            if (pool.Count == 0) yield break;
-            if (!Audible(out var roomVolume)) yield break;
+            if (pool.Count == 0)
+            {
+                if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo("Thunder: no clips loaded, nothing to play.");
+                yield break;
+            }
 
+            if (!Audible(out var roomVolume))
+            {
+                if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo("Thunder: the player's room lets no outdoor sound in, not played.");
+                yield break;
+            }
+
+            var group = MixerGroup();
             var source = FreeSource();
             source.clip = pool[Random.Range(0, pool.Count)];
-            source.outputAudioMixerGroup = MixerGroup();
+            source.outputAudioMixerGroup = group;
             source.volume = Mathf.Clamp01(1.15f - metres / 12000f) * roomVolume * ForecasterPlugin.ThunderVolume.Value;
             source.pitch = Random.Range(0.92f, 1.06f);
             // Air takes the top off distant thunder: full brightness close by, a low rumble by 10 km.
             source.GetComponent<AudioLowPassFilter>().cutoffFrequency = Mathf.Lerp(16000f, 700f, Mathf.Clamp01(metres / 10000f));
             source.Play();
+            if (ForecasterPlugin.VerboseLog.Value)
+            {
+                // Everything that decides whether it is heard, for when it isn't (0.2.1 was silent in game).
+                ForecasterPlugin.Log.LogInfo($"Thunder: '{source.clip.name}' ({source.clip.length:0.0} s, {source.clip.loadState}) at {metres:0} m, volume {source.volume:0.00} (room {roomVolume:0.00}), " +
+                    $"group '{(group != null ? group.name : "none")}', spatialize {source.spatialize}, blend {source.spatialBlend:0.#}, priority {source.priority}, " +
+                    $"playing {source.isPlaying}, listener volume {AudioListener.volume:0.00}{(AudioListener.pause ? " (paused)" : "")}.");
+            }
         }
 
         /// <summary>
@@ -319,6 +454,25 @@ namespace SPTForecaster
             source.playOnAwake = false;
             source.spatialBlend = 0f; // thunder fills the sky; the game's mixer handles indoors
             source.priority = 64;
+            MixerGroup();
+            if (_template != null)
+            {
+                // Set up like the game's own outdoor rain source, which is heard through the same group: a
+                // plain 2D source was silent there in 0.2.1, and EFT's audio (Meta XR spatializer, voice
+                // limits) may want what the game's sources have.
+                source.spatialize = _template.spatialize;
+                source.spatializePostEffects = _template.spatializePostEffects;
+                source.spatialBlend = _template.spatialBlend;
+                source.bypassEffects = _template.bypassEffects;
+                source.bypassListenerEffects = _template.bypassListenerEffects;
+                source.bypassReverbZones = _template.bypassReverbZones;
+                source.reverbZoneMix = _template.reverbZoneMix;
+                source.ignoreListenerPause = _template.ignoreListenerPause;
+                source.ignoreListenerVolume = _template.ignoreListenerVolume;
+                source.dopplerLevel = 0f;
+                source.priority = Mathf.Max(0, _template.priority - 8);
+            }
+
             go.AddComponent<AudioLowPassFilter>();
             _sources.Add(source);
             return source;
@@ -334,6 +488,7 @@ namespace SPTForecaster
                 if (blender._environment == EnvironmentType.Outdoor && blender._outputMixerGroup != null)
                 {
                     _group = blender._outputMixerGroup;
+                    _template = blender._precipitationSource;
                     break;
                 }
             }

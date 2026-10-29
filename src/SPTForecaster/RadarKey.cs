@@ -7,8 +7,9 @@ using UnityEngine.UI;
 namespace SPTForecaster
 {
     /// <summary>
-    /// The radar's key, on the radar in the map's bottom-right corner (no map button sits there), one strip in the time
-    /// bar's colours and the "SELECT TIME PHASE:" label's style:
+    /// The radar's key, in the forecast box's right half under the playback slider (Joel's layout,
+    /// 2026-10-29), or, with no box (no map picked, Labs, Factory), on the radar's bottom-right corner as a
+    /// strip in the time bar's colours. In the "SELECT TIME PHASE:" label's style:
     ///
     ///   RAIN ● ● ● ●    FOG ● ● ● ●    CLOUD ● ●
     ///
@@ -43,12 +44,29 @@ namespace SPTForecaster
         private int _lastMinute = -1;
         private string _ringAt;
 
+        private RectTransform _radarRect, _keyRect, _readoutRect;
+        private float _readoutOffset, _readoutWidth;
+
+        // Docked in the forecast box (its right half), or on the radar's corner when there's no box.
+        private static RadarKey _live;
+        private RectTransform _dock;
+        private Image _keyFill, _readoutBack;
+        private ContentSizeFitter _keyFitter, _readoutFitter;
+        private HorizontalLayoutGroup _keyRow;
+        private VerticalLayoutGroup _readoutColumn;
+        private RectOffset _keyPadding, _readoutPadding;
+        private static readonly RectOffset NoPadding = new RectOffset(0, 0, 0, 0);
+        private Vector2 _shift;
+        private float _nextPlace;
+        private static readonly Vector3[] Corners = new Vector3[4];
+
         /// <summary>Put the key on the radar (once), which covers exactly the buttons container.</summary>
         public static void Attach(Transform radar, MatchMakerSelectionLocationScreen screen)
         {
             try
             {
-                if (radar == null || radar.Find(Name) != null) return;
+                // Once per radar (the strip may be docked in the forecast box, so not found under the radar).
+                if (radar == null || (_live != null && _live._radarRect == radar) || radar.Find(Name) != null) return;
 
                 var style = Style(screen);
                 if (style == null)
@@ -79,7 +97,18 @@ namespace SPTForecaster
                 row.childForceExpandWidth = row.childForceExpandHeight = false;
                 var fitter = go.AddComponent<ContentSizeFitter>();
                 fitter.horizontalFit = fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-                var key = go.AddComponent<RadarKey>();
+
+                // The component sits on its own object that stays on the radar: the strip itself moves into
+                // the forecast box, which hides with it, and a hidden object gets no Update to move back out.
+                var driver = new GameObject("SPTForecasterRadarKeyDriver", typeof(RectTransform));
+                driver.transform.SetParent(radar, false);
+                driver.AddComponent<LayoutElement>().ignoreLayout = true;
+                var key = driver.AddComponent<RadarKey>();
+                _live = key;
+                key._keyFill = fill;
+                key._keyFitter = fitter;
+                key._keyRow = row;
+                key._keyPadding = row.padding;
                 key._group = go.AddComponent<CanvasGroup>();
                 key._group.blocksRaycasts = false;
                 key._group.interactable = false;
@@ -96,6 +125,8 @@ namespace SPTForecaster
                 Dot(go.transform, size, Shade(RadarRenderer.CloudColour, 1));
 
                 key.Apply();
+                key._radarRect = (RectTransform)radar;
+                key._keyRect = rt;
                 key.AddPlayback(radar, style, size, pad, rt);
                 if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo($"Radar key added, text '{style.name}' at {size:0.#}.");
             }
@@ -117,18 +148,25 @@ namespace SPTForecaster
             go.AddComponent<LayoutElement>().ignoreLayout = true;
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 0f);
-            rt.anchoredPosition = new Vector2(-Margin, Margin + keyHeight + 4f);
+            _readoutOffset = keyHeight + 4f;
+            _readoutRect = rt;
+            rt.anchoredPosition = new Vector2(-Margin, Margin + _readoutOffset);
             rt.sizeDelta = new Vector2(width, 0f);
+            _readoutWidth = width;
             var fill = go.AddComponent<Image>();
             fill.color = Fill;
             fill.raycastTarget = false;
+            _readoutBack = fill;
             var column = go.AddComponent<VerticalLayoutGroup>();
             column.padding = new RectOffset(pad, pad, Mathf.RoundToInt(pad * 0.6f), Mathf.RoundToInt(pad * 0.8f));
             column.spacing = size * 0.3f;
             column.childControlWidth = column.childControlHeight = true;
             column.childForceExpandWidth = true;
             column.childForceExpandHeight = false;
-            go.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            _readoutColumn = column;
+            _readoutPadding = column.padding;
+            _readoutFitter = go.AddComponent<ContentSizeFitter>();
+            _readoutFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             _readout = go.AddComponent<CanvasGroup>();
             _readout.blocksRaycasts = false;
             _readout.interactable = false;
@@ -169,22 +207,32 @@ namespace SPTForecaster
 
         private void Update()
         {
-            _group.alpha = ForecasterPlugin.ShowRadar.Value && ForecasterPlugin.ShowRadarKey.Value ? 1f : 0f;
             if (Schedule.Winter != _winter) Apply();
+            if (Time.unscaledTime >= _nextPlace)
+            {
+                _nextPlace = Time.unscaledTime + 0.2f;
+                Place();
+            }
+
+            // Only in the forecast box: with no map picked (or Labs, Factory) the key on its own over the
+            // time bar was out of place (Joel, 2026-10-29).
+            _group.alpha = _dock != null && ForecasterPlugin.ShowRadar.Value && ForecasterPlugin.ShowRadarKey.Value ? 1f : 0f;
 
             if (_readout == null) return;
             var progress = ForecasterPlugin.ShowRadar.Value ? RadarLayer.PlayProgress : null;
-            _readout.alpha = progress.HasValue ? 1f : 0f;
-            if (progress.HasValue)
+            // The slider always shows in the box (at the raid's start between plays), never on the map.
+            var shown = _dock != null && ForecasterPlugin.ShowRadar.Value;
+            _readout.alpha = shown ? 1f : 0f;
+            if (shown)
             {
-                var minute = Mathf.FloorToInt(progress.Value * RadarLayer.RaidMinutes);
+                var minute = progress.HasValue ? Mathf.FloorToInt(progress.Value * RadarLayer.RaidMinutes) : -2;
                 if (minute != _lastMinute)
                 {
                     _lastMinute = minute;
-                    _readoutText.text = "RAID +" + minute + " MIN";
+                    _readoutText.text = minute < 0 ? "RAID START" : "RAID +" + minute + " MIN";
                 }
 
-                _readoutFill.anchorMax = new Vector2(progress.Value, 1f);
+                _readoutFill.anchorMax = new Vector2(progress ?? 0f, 1f);
             }
 
             var at = progress.HasValue ? RadarLayer.PlayLocation : null;
@@ -200,6 +248,90 @@ namespace SPTForecaster
                     _ringRect.anchoredPosition = Vector2.zero;
                 }
             }
+        }
+
+        /// <summary>
+        /// Keep the key clear of the time bar and the forecast box, which sit over the map's bottom edge:
+        /// in the corner it was hidden behind the box (2026-10-29). When either overlaps the corner, the key
+        /// (and the playback readout over it) moves up to sit just above the highest of them, right-aligned
+        /// with it.
+        /// </summary>
+        private void Place()
+        {
+            if (_radarRect == null || _keyRect == null) return;
+            var slot = ForecastPanel.KeySlot();
+            if (slot != _dock) Dock(slot);
+            if (_dock != null) return;
+
+            var area = _radarRect.rect;
+            var keyWidth = _keyRect.rect.width;
+            float right = area.xMax - Margin, bottom = area.yMin + Margin;
+            var shift = Vector2.zero;
+            foreach (var cover in ForecastPanel.Covering())
+            {
+                cover.GetWorldCorners(Corners);
+                Vector2 min = _radarRect.InverseTransformPoint(Corners[0]), max = _radarRect.InverseTransformPoint(Corners[2]);
+                // Only something low on the map, across the key's corner (not a full-screen container).
+                if (max.y - min.y > area.height * 0.5f || max.y < bottom) continue;
+                var keyRight = right + shift.x;
+                if (max.x < keyRight - keyWidth || min.x > keyRight) continue;
+                var up = max.y + 6f - bottom;
+                if (up <= shift.y) continue;
+                shift.y = up;
+                shift.x = Mathf.Min(0f, max.x - right);
+            }
+
+            if ((shift - _shift).sqrMagnitude < 0.25f) return;
+            _shift = shift;
+            _keyRect.anchoredPosition = new Vector2(-Margin, Margin) + shift;
+            if (_readoutRect != null) _readoutRect.anchoredPosition = new Vector2(-Margin, Margin + _readoutOffset) + shift;
+        }
+
+        private void OnDestroy()
+        {
+            if (_live == this) _live = null;
+        }
+
+        /// <summary>The forecast box is going away: take the slider and key back out of it first.</summary>
+        public static void Undock(RectTransform slot)
+        {
+            if (_live != null && slot != null && _live._dock == slot) _live.Dock(null);
+        }
+
+        /// <summary>
+        /// Into the forecast box's right half (slider over key, no backgrounds of their own, the box's layout
+        /// places them), or back onto the radar's corner (null).
+        /// </summary>
+        private void Dock(RectTransform slot)
+        {
+            _dock = slot;
+            var docked = slot != null;
+            var parent = docked ? (Transform)slot : _radarRect;
+            _readoutRect.SetParent(parent, false);
+            _keyRect.SetParent(parent, false);
+            foreach (var rt in new[] { _readoutRect, _keyRect })
+            {
+                rt.GetComponent<LayoutElement>().ignoreLayout = !docked;
+                rt.localScale = Vector3.one;
+                if (!docked)
+                {
+                    rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 0f);
+                }
+            }
+
+            _keyFitter.enabled = _readoutFitter.enabled = !docked;
+            _keyFill.color = _readoutBack.color = docked ? Color.clear : Fill;
+            _keyRow.padding = docked ? NoPadding : _keyPadding;
+            _readoutColumn.padding = docked ? NoPadding : _readoutPadding;
+            if (!docked)
+            {
+                _readoutRect.sizeDelta = new Vector2(_readoutWidth, 0f);
+                _shift = new Vector2(float.NaN, 0f); // place again on the corner
+                _nextPlace = 0f;                      // next frame, once the box is gone
+            }
+
+            _lastMinute = -1;
+            if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo(docked ? "Radar key: in the forecast box." : "Radar key: on the map corner.");
         }
 
         /// <summary>Rain or snow, as the radar draws it now.</summary>

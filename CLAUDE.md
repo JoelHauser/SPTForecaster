@@ -4,9 +4,97 @@ Weather radar over SPT's location map, a forecast box on top of the time bar, an
 both. Each map has its own weather, read from one storm field. Two halves: a BepInEx client plugin
 (`src/SPTForecaster`, net472) and an SPT 4.1 server mod (`src/SPTForecaster.Server`, net10.0). Repo
 https://github.com/JoelHauser/SPTForecaster (public). README.md is a short user-facing summary; the design detail is here. Browser prototype the client's
-weather model is ported from: docs/radar-prototype.html (keep the two in step).
+weather model is ported from: docs/radar-prototype.html (keep the two in step). **Out of step since
+0.2.2:** the C# field draws each cell's texture and ragged edge in the cell's own moving frame
+(`Field.CellValue`, steady-z noise, `TextureLife` 2 h) and drifts the cloud pattern with the wind
+(`Field.CloudNoise`); the prototype still draws them in the map's frame.
 
-## NEXT: the home test of 0.2.1
+## NEXT: the home test of 0.2.2
+
+0.2.2 (2026-10-29, home PC, installed in H:\SPT4.1.X, not run in game) answers Joel's first
+look at 0.2.1:
+- Radar key was hidden behind the forecast box (bottom-right corner). `RadarKey.Place` now lifts the key
+  (and the playback readout) to just above whatever covers the corner (time panel, forecast box), right-
+  aligned with it, checked every 0.2 s.
+- Playback "dancing in place / mirrored": the rain/fog texture was drawn in the map's frame with an eased
+  z blend, so it boiled and swelled back while the storm outline slid. Now it rides with each cell and
+  changes at an even rate; card and raid read the same field, so their weather changes for a given seed.
+  Harness (scratchpad): render 9 -> 12 ms per frame.
+- Playback hitches: the radar now has its own nested Canvas (key, readout, ring inside it) so per-frame
+  changes no longer rebuild the location screen's canvas. Unverified that this was the cause: the verbose
+  log now writes `Radar playback: N frames, render X ms, upload Y ms` after each run.
+- Slow start: wait 0.5 -> 0.15 s, first play's opening hold 1 -> 0.2 s.
+- Thunder silent in game although clips loaded and strikes fired (log: group 'PrecipitationAmbientOut').
+  Cause unknown; the thunder source now copies the game's outdoor rain source's settings (spatialize,
+  blend, bypasses, priority), and the verbose log writes one `Thunder: '<clip>' ...` line per play with
+  everything that decides audibility, or why it was skipped. Read that line first if still silent.
+- Lightning "from one direction, source visible": the flash's direct light was the moon light at the
+  moon's angle, and CloudSix's clouds were lit through their moon light. The light now turns towards
+  straight down for the flash (by the flash's share of its intensity; restored afterwards, as TOD below
+  shadow quality 3 sets the direction only about once a second) and CloudSix's clouds get an even glow
+  (ambient colour) instead.
+
+- Storms "only come from the south" (Joel, same day, on the installed 0.2.2): the steering heading was one
+  angle per seed swinging +-0.9 rad over ~11 days (seed 638965958: always moving N/NW). Now `Field.Steering`
+  gives each 12 in-game hour spell a heading drawn from a St Petersburg climatology (W 30, SW 25, NW 18,
+  S 9, N 6, SE 5, E 4, NE 3) times a per-pattern bias (`SteerBias`), turning to the next over the spell's
+  last 3 h. Harness over 60 days, Joel's seed: W 27 %, SW 24 %, NW 19 %, S 10 %, N 7 %, E/NE/SE 3-4 %.
+  Installed 2026-10-29 together with the items below.
+- Then (Joel's marked-up screenshot): the change lines ("Thunder passing in ~5 min", "Rain stopping in
+  ~10 min") are gone from the box; its right half (`RadarKeySlot`, own Canvas) now holds the playback
+  slider over the key. `RadarKey.Dock` moves both strips in (no backgrounds or padding, the box's layout
+  places them; slider reads "RAID START" between plays) and back to the radar corner when no box shows
+  (Labs/Factory/no map). Joel then asked for no key at all without a box (seen over the time bar with no map
+  picked): undocked, the strip and slider are hidden (alpha 0); only the ring stays on the map. Built, not
+  installed (game running). The RadarKey component lives on `SPTForecasterRadarKeyDriver` under the radar
+  so it keeps updating while the box is hidden. `ForecastResult.Changes` is still computed (log line).
+  Installed 2026-10-29, not seen in game.
+- **Thunder silence solved (from the 0.2.2 log):** every play logged `(0.0 s, Loaded) ... playing False`:
+  UnityWebRequestMultimedia turned the libsndfile Ogg Vorbis clips into empty clips in EFT (the files are
+  fine, ffprobe reads 6-17 s each). Clips are now 16-bit WAV (assets/thunder/*.wav, 10.6 MB; the .ogg
+  were removed from the repo; tools/thunder_clips.py writes WAV) and `Thunder.Wav` reads them on a worker
+  and builds the clips with AudioClip.Create/SetData. Parser checked against all 12 files in a console
+  test. Old .ogg files stay in installs (never delete there); the plugin only looks at *.wav.
+- Flash peaks lowered (direct 0.5->0.3, ambient 0.45->0.3, sky 0.6->0.45) after "very bright for night".
+  The Six mods (AOSix, FogSix, ReflectSix, TraceSix, read 2026-10-29) patch nothing we patch. TraceSix
+  feeds the TOD light (colour x intensity, direction) and `_SHAr` into GI volumes it refreshes a slice
+  at a time, so a slice refreshed mid-flash can hold the flash's light until its next refresh; FogSix
+  tints fog with MoonSkyColor (only during the flash). Not yet known whether Joel's "bright" was the
+  flash or the night between flashes.
+
+- Playback still "hitches and stutters" (Joel, after the nested-canvas build; no `Radar playback` line in
+  his log: it was only written after both plays, and he moved on first). Cause in the code: each frame
+  was rendered only after the last was uploaded, at whatever time it was then, so a slow render (new
+  cells, thread pool busy; 12 ms typical, ~50 ms cold) held the picture and then jumped. Now
+  `RadarLayer` plays a fixed 24 fps timeline (frames 0..288 per play), renders up to 10 frames ahead into
+  pooled buffers (`RadarRenderer.Render(..., into)`), prefills during the start wait, shows the newest
+  frame not past due, and skips ahead if it falls behind. Log line now per play stop or interruption:
+  `Radar playback: N frames shown (L late), render avg/worst, upload avg/worst`. Built, NOT installed
+  (game running). If it still stutters, read that line: late > 0 = rendering can't keep up; big upload
+  worst = main-thread texture upload (next step would be LoadRawTextureData or a smaller playback size).
+
+- **Thunder, real cause (WAV build's log):** clips logged "120 s of sound" at start-up but `(0.0 s, Loaded)`
+  at every strike. Clips made in code (AudioClip.Create, and the Ogg ones from UnityWebRequest alike) lose
+  their sound when Unity's audio is reset, which happens on the way into a raid. `Thunder` now keeps the
+  samples (16-bit, ~10 MB), rebuilds every clip on `AudioSettings.OnAudioConfigurationChanged`, at
+  raid start (`Awake`) and before any play if a clip has 0 samples, and logs `Thunder: ... clips rebuilt ...`.
+  (WAV stays: no harm, and the loader no longer depends on Unity's decoders.)
+- **TraceSix:** its log shows every night flash flipping its RayTracedWorld sun shadow mode ("meshes are out
+  of the game's sun shadow (40599)" then "sun's rays missing for half a second, giving it back"), because
+  the flash raised the TOD light TraceSix treats as the sun. With `com.matsix.tracesix` loaded the flash no
+  longer touches the TOD light (ambient x1.4 instead). Joel also saw sky dark but ground lit like day after
+  switching to night with the time changer, normal with TraceSix off: not shown to be ours (we don't touch
+  time or the light outside flashes); next test is the same with Lightning off / Force thunderstorm Off.
+  Installed 2026-10-29 with the playback rework and hidden-key change, not run in game.
+
+- Joel confirmed thunder plays and the TraceSix lighting is fixed (2026-10-29). Then: some clips carried the
+  recording's own rain, doubling the game's rain. `tools/derain.py` (numpy only) now runs after
+  thunder_clips.py: spectral subtraction of each clip's steady hiss above ~350-900 Hz (x3, at most -40 dB),
+  and highs above 1.5-3 kHz faded 35 dB from 1 s after the crack (drop clicks on the mic aren't hiss).
+  HF floor fell 7-11 dB with the gentle pass alone; spectrograms (scratchpad) show the crack and rumble
+  kept, tail hiss and drop streaks gone. Applied in place to assets/thunder, installed, not heard in game.
+
+## Earlier: the home test of 0.2.1
 
 0.2.1 (2026-10-29) reworks the lightning flash (see Thunderstorms; 0.2.0's flash added to TOD's light
 intensity every frame, but TOD only resets it every 0-1 s by shadow quality, so it built up). 0.2.0

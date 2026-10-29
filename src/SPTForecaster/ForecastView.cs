@@ -36,8 +36,7 @@ namespace SPTForecaster
         private TextMeshProUGUI _heading;
         private Image _headIcon;
         private TextMeshProUGUI _headText, _wind;
-        private readonly Image[] _changeIcons = new Image[2];
-        private readonly TextMeshProUGUI[] _changeTexts = new TextMeshProUGUI[2];
+        private RectTransform _keySlot;
 
         public static ForecastView Create(LocationConditionsPanel panel)
         {
@@ -109,14 +108,16 @@ namespace SPTForecaster
             view._wind = Text(words.transform, "Wind", clock, s * 0.9f, false, rowHeight * 0.85f);
             view._wind.alpha = FaintAlpha;
 
-            var right = Stack(main.transform, "Changes");
+            // The right half holds the radar's playback slider and key (RadarKey docks them here); they
+            // replaced the "Rain stopping in ~10 min" change lines on request (2026-10-29). Its own canvas,
+            // as the slider moves every frame during playback.
+            var right = Stack(main.transform, "RadarKeySlot");
             Half(right);
-            for (var i = 0; i < 2; i++)
-            {
-                var change = Row(right.transform, "Change" + i, s * 0.45f, rowHeight);
-                view._changeIcons[i] = Icon(change.transform, s * 1.2f, panel._weatherIcon);
-                view._changeTexts[i] = Text(change.transform, "Text", clock, s, false, rowHeight);
-            }
+            var slotLayout = right.GetComponent<VerticalLayoutGroup>();
+            slotLayout.spacing = s * 0.3f;
+            slotLayout.childAlignment = TextAnchor.MiddleLeft;
+            right.AddComponent<Canvas>();
+            view._keySlot = (RectTransform)right.transform;
 
             if (ForecasterPlugin.VerboseLog.Value)
             {
@@ -136,19 +137,6 @@ namespace SPTForecaster
             SetIcon(_headIcon, forecast.Headline);
             _headText.text = forecast.Headline?.Text ?? "";
             _wind.text = forecast.Wind ?? "";
-
-            for (var i = 0; i < 2; i++)
-            {
-                var change = i < forecast.Changes.Count ? forecast.Changes[i] : null;
-                if (change == null && i == 0 && forecast.Wind != null)
-                {
-                    change = new ForecastLine { Text = "No change expected", Faint = true };
-                }
-
-                _changeTexts[i].text = change?.Text ?? "";
-                _changeTexts[i].alpha = change != null && change.Faint ? FaintAlpha : 1f;
-                SetIcon(_changeIcons[i], change);
-            }
         }
 
         /// <summary>The same box with one line in place of the weather (a map without a forecast, say).</summary>
@@ -340,13 +328,21 @@ namespace SPTForecaster
             return false;
         }
 
+        /// <summary>The box, while it shows.</summary>
+        public RectTransform Rect => _root != null && _root.activeInHierarchy ? (RectTransform)_root.transform : null;
+
+        /// <summary>Where the radar's slider and key go, while the box shows.</summary>
+        public RectTransform KeySlot => Rect != null ? _keySlot : null;
+
         public void Hide()
         {
             if (_root != null) _root.SetActive(false);
+            RadarKey.Undock(_keySlot);
         }
 
         public void Destroy()
         {
+            RadarKey.Undock(_keySlot);
             if (_root != null) UnityEngine.Object.Destroy(_root);
             _root = null;
         }

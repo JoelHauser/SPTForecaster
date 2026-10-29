@@ -1,5 +1,5 @@
 """
-Cuts SPTForecaster's thunder clips (BepInEx/plugins/SPTForecaster/thunder/*.ogg) out of freely licensed field
+Cuts SPTForecaster's thunder clips (BepInEx/plugins/SPTForecaster/thunder/*.wav) out of freely licensed field
 recordings from Wikimedia Commons. Credits for every source are in THUNDER_CREDITS.md and the README.
 
 Each clip is one strike: from just before its onset to the end of its rumble, faded at both ends, mono,
@@ -7,6 +7,7 @@ loudness-matched, and labelled "near" (a sharp crack at the start) or "far" (a r
 distance itself (delay after the flash, quieter, more muffled the further away).
 
 Usage: python tools/thunder_clips.py <folder with the downloaded recordings> <output folder>
+Then: python tools/derain.py <output folder>   (takes out the recordings' own rain)
 Needs numpy and soundfile.
 """
 import json
@@ -119,12 +120,10 @@ def main(src, out):
                 seg *= 0.89 / peak
             k, bright = kind(seg)
             n += 1
-            fn = f"thunder_{k}_{n:02d}.ogg"
-            # In blocks: libsndfile's Vorbis encoder can crash on one large write.
-            with sf.SoundFile(os.path.join(out, fn), "w", RATE, 1, format="OGG", subtype="VORBIS") as f:
-                data = seg.astype(np.float32)
-                for i in range(0, len(data), 4096):
-                    f.write(data[i:i + 4096])
+            fn = f"thunder_{k}_{n:02d}.wav"
+            # Plain 16-bit WAV, which the plugin reads itself: Unity's Ogg Vorbis loader, in EFT, turned
+            # these clips (written by libsndfile) into empty, 0 s AudioClips (0.2.1, 2026-10-29).
+            sf.write(os.path.join(out, fn), seg.astype(np.float32), RATE, format="WAV", subtype="PCM_16")
             made.append({"file": fn, "source": name, "start": round(s, 2), "seconds": round(len(seg) / RATE, 1), "kind": k, "bright": round(float(bright), 3)})
             print(fn, made[-1])
     json.dump(made, open(os.path.join(out, "clips.json"), "w"), indent=1)

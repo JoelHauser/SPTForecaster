@@ -141,6 +141,9 @@ namespace SPTForecaster
         {
             public bool Fog, Plateau, Coast;
             public double Birth, Life, X0, Y0, Vx, Vy, Ang, Width, Length, Peak, Trail, Curve;
+
+            /// <summary>Where in the noise this cell's texture comes from, so no two cells look alike.</summary>
+            public double Nx, Ny;
         }
 
         private static readonly object Gate = new object();
@@ -164,6 +167,7 @@ namespace SPTForecaster
                     if (value == _forcedPattern) return;
                     _forcedPattern = value;
                     CellCache.Clear();
+                    SteerCache.Clear();
                 }
             }
         }
@@ -180,6 +184,7 @@ namespace SPTForecaster
                     _seed = value;
                     CellCache.Clear();
                     PatternCache.Clear();
+                    SteerCache.Clear();
                     ChainMarks.Clear();
                 }
             }
@@ -197,6 +202,7 @@ namespace SPTForecaster
                     _season = value;
                     CellCache.Clear();
                     PatternCache.Clear();
+                    SteerCache.Clear();
                     ChainMarks.Clear();
                 }
             }
@@ -248,8 +254,60 @@ namespace SPTForecaster
         public static void Wind(double t, out double dir, out double strength)
         {
             var s = (Seed % 997 + 997) % 997 / 997.0 * Math.PI * 2;
-            dir = s + 0.9 * Math.Sin(t / 150000 + s);
+            dir = Steering(t) + 0.15 * Math.Sin(t / 20000 + s);
             strength = Math.Max(0, Math.Min(1, 0.45 + 0.4 * Math.Sin(t / 47000 + s * 1.7) + PatternBlend(t, p => p.Wind) + CurrentClimate.Wind));
+        }
+
+        private const double SpellSeconds = 12 * 3600, TurnSeconds = 3 * 3600;
+        private static readonly Dictionary<long, double> SteerCache = new Dictionary<long, double>();
+
+        // Where weather comes from around St Petersburg, and how often (frame axes: x east, y south; the
+        // angle is the way it moves, so "from the west" moves east, 0). Mostly Atlantic lows off the Baltic
+        // from the west and south-west, north-west behind cold fronts, now and then south (warm air ahead of
+        // a low) or east (a blocking high). Per pattern, a multiplier on each.
+        //                                         from:  W      SW     NW     S      N      SE     E      NE
+        private static readonly double[] SteerAngles = { 0, -0.785, 0.785, -1.571, 1.571, -2.356, 3.142, 2.356 };
+        private static readonly double[] SteerWeights = { 30, 25, 18, 9, 6, 5, 4, 3 };
+        private static readonly Dictionary<string, double[]> SteerBias = new Dictionary<string, double[]>
+        {
+            ["fair"] = new double[] { 0.8, 0.7, 1.2, 0.8, 1.8, 1.2, 2.2, 1.8 },
+            ["grey"] = new double[] { 1, 1.2, 0.8, 1.2, 0.6, 1.2, 1.2, 0.8 },
+            ["unsettled"] = new double[] { 1.3, 0.8, 1.8, 0.6, 1, 0.5, 0.4, 0.6 },
+            ["longrain"] = new double[] { 1.3, 1.6, 0.6, 1.4, 0.3, 1.2, 0.5, 0.3 },
+            ["coastfog"] = new double[] { 1.8, 1.4, 1, 0.6, 0.6, 0.4, 0.3, 0.4 },
+            ["storms"] = new double[] { 1.4, 1.8, 0.8, 1.4, 0.3, 0.8, 0.3, 0.3 },
+        };
+
+        /// <summary>
+        /// The way weather moves at t. Each twelve-hour spell gets its own heading, drawn from the region's
+        /// usual directions for the spell's weather pattern, and the last three hours turn to the next one.
+        /// Before, one heading per seed swung only about 50 degrees either way over days, so a seed could
+        /// send every storm in from the south for good (seen 2026-10-29).
+        /// </summary>
+        private static double Steering(double t)
+        {
+            var k = (long)Math.Floor(t / SpellSeconds);
+            var a = SpellHeading(k);
+            var f = Smoothstep(SpellSeconds - TurnSeconds, SpellSeconds, t - k * SpellSeconds);
+            if (f <= 0) return a;
+            return a + Math.IEEERemainder(SpellHeading(k + 1) - a, Math.PI * 2) * f;
+        }
+
+        private static double SpellHeading(long k)
+        {
+            lock (Gate)
+            {
+                if (SteerCache.TryGetValue(k, out var cached)) return cached;
+                var key = PatternOfPeriod((long)Math.Floor((k + 0.5) * SpellSeconds / PeriodSeconds));
+                var bias = SteerBias.TryGetValue(key, out var b) ? b : null;
+                var weights = new double[SteerWeights.Length];
+                for (var i = 0; i < weights.Length; i++) weights[i] = SteerWeights[i] * (bias != null ? bias[i] : 1);
+                var r = new Rng(Mix(Seed ^ 0x68e31da4, (int)k));
+                var heading = SteerAngles[PickIndex(r.Next(), weights)] + (r.Next() - 0.5) * 0.6;
+                if (SteerCache.Count > 4000) SteerCache.Clear();
+                SteerCache[k] = heading;
+                return heading;
+            }
         }
 
         private static string PatternOfPeriod(long p)
@@ -361,6 +419,8 @@ namespace SPTForecaster
                 Vx = Math.Cos(dir) * speed, Vy = Math.Sin(dir) * speed, Ang = ang,
                 Width = width, Length = length, Peak = r.Range(k.Peak0, k.Peak1), Trail = k.Trail,
                 Curve = k.Curve * (r.Next() < 0.5 ? -1 : 1),
+                Nx = (uint)Mix((int)(birth / 60), 0x3c6ef372) / 4294967296.0 * 512,
+                Ny = (uint)Mix((int)(birth / 60), 0x1b873593) / 4294967296.0 * 512,
             };
 
             if (kindName == "coastfog")
@@ -445,23 +505,28 @@ namespace SPTForecaster
 
         private static double Lattice(int x, int y, int z) => (uint)Mix(Mix(Mix(Seed, x), y), z) / 4294967296.0;
 
-        private static double VNoise(double x, double y, double z)
+        /// <summary>
+        /// Value noise. With <paramref name="steadyZ"/> it changes along z at an even rate: the usual eased
+        /// blend between z slices stops at every slice and starts again, which, played fast, reads as the
+        /// weather swelling and shrinking back in place.
+        /// </summary>
+        private static double VNoise(double x, double y, double z, bool steadyZ = false)
         {
             var xi = (int)Math.Floor(x); var yi = (int)Math.Floor(y); var zi = (int)Math.Floor(z);
             double xf = x - xi, yf = y - yi, zf = z - zi;
-            double u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+            double u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = steadyZ ? zf : zf * zf * (3 - 2 * zf);
             double L(double a, double b, double f) => a + (b - a) * f;
             return L(
                 L(L(Lattice(xi, yi, zi), Lattice(xi + 1, yi, zi), u), L(Lattice(xi, yi + 1, zi), Lattice(xi + 1, yi + 1, zi), u), v),
                 L(L(Lattice(xi, yi, zi + 1), Lattice(xi + 1, yi, zi + 1), u), L(Lattice(xi, yi + 1, zi + 1), Lattice(xi + 1, yi + 1, zi + 1), u), v), w);
         }
 
-        private static double Fbm(double x, double y, double z)
+        private static double Fbm(double x, double y, double z, bool steadyZ = false)
         {
             double a = 0.5, sum = 0, norm = 0;
             for (var o = 0; o < 4; o++)
             {
-                sum += a * VNoise(x, y, z); norm += a;
+                sum += a * VNoise(x, y, z, steadyZ); norm += a;
                 x *= 2.03; y *= 2.03; z *= 1.6; a *= 0.5;
             }
 
@@ -470,6 +535,15 @@ namespace SPTForecaster
 
         // ---- sampling ------------------------------------------------------------------------------
 
+        /// <summary>How long (Tarkov seconds) a storm's inner texture takes to turn into another.</summary>
+        private const double TextureLife = 7200;
+
+        /// <summary>
+        /// A cell's strength at a point, texture included. Everything is worked out in the cell's own frame,
+        /// relative to its centre as it drifts with the wind, so the rain inside a storm travels with it the
+        /// way radar echoes do and only slowly changes shape. (Texture drawn in the map's frame seethed in
+        /// place while the storm's outline slid over it: "dancing" on playback, 2026-10-29.)
+        /// </summary>
         private static double CellValue(Cell c, double x, double y, double t)
         {
             var age = (t - c.Birth) / c.Life;
@@ -485,37 +559,42 @@ namespace SPTForecaster
                 dx += 40 * (VNoise(y / 38 + 11.3, t / 5400, 3.7) - 0.5);
             }
 
+            // Ragged edges: the point is pushed about by noise that rides with the cell.
+            var z = (t - c.Birth) / TextureLife;
+            var ox = 18 * (2 * VNoise(dx / 70 + c.Nx, dy / 70 + c.Ny, z, true) - 1);
+            var oy = 18 * (2 * VNoise(dx / 70 + c.Nx + 31.7, dy / 70 + c.Ny + 17.3, z, true) - 1);
+            dx += ox; dy += oy;
+
             double ca = Math.Cos(c.Ang), sa = Math.Sin(c.Ang);
             var along = dx * ca + dy * sa;
             var across = -dx * sa + dy * ca;
             along -= c.Curve * across * across;              // bows the band
             var w = along > 0 ? c.Width : c.Width * c.Trail;  // sharp leading edge, rain trailing behind
-            return c.Peak * env * Math.Exp(-1.5 * (along * along / (w * w) + across * across / (c.Length * c.Length)));
+            var v = c.Peak * env * Math.Exp(-1.5 * (along * along / (w * w) + across * across / (c.Length * c.Length)));
+            if (v < 0.002) return 0;
+
+            // Fog in banks and thinner patches; rain broken into cells with heavier cores.
+            if (c.Fog) return Math.Min(1, v * (0.3 + 1.1 * Fbm(dx / 48 + c.Nx + 5.1, dy / 48 + c.Ny + 9.3, z * 0.5, true)));
+            var tex = Fbm(dx / 32 + c.Nx, dy / 32 + c.Ny, z, true);
+            return Math.Min(1, v * Math.Max(0, 0.05 + 1.55 * tex * tex + 0.25 * tex));
         }
 
         /// <summary>Rain and fog strength (0..1) at a point of the frame.</summary>
         public static void At(List<Cell> cells, double x, double y, double t, out double rain, out double fog)
         {
-            var z = t / 1800;
-            var wx = x + 36 * (VNoise(x / 70, y / 70, z) - 0.5);
-            var wy = y + 36 * (VNoise(x / 70 + 31.7, y / 70 + 17.3, z) - 0.5);
             double dry = 1, clear = 1;
             foreach (var c in cells)
             {
-                var v = CellValue(c, wx, wy, t);
+                var v = CellValue(c, x, y, t);
+                if (v <= 0) continue;
                 if (c.Fog) clear *= 1 - v; else dry *= 1 - v;
             }
 
             rain = 1 - dry;
             fog = 1 - clear;
-            if (rain > 0.01)
-            {
-                var tex = Fbm(wx / 32, wy / 32, z * 0.8);
-                rain = Math.Min(1, rain * Math.Max(0, 0.05 + 1.55 * tex * tex + 0.25 * tex));
-            }
 
-            // Fog is broken into banks and thinner patches, and mostly burns off by midday.
-            if (fog > 0.01) fog = Math.Min(1, fog * FogHour(t) * (0.3 + 1.1 * Fbm(wx / 48 + 5.1, wy / 48 + 9.3, z * 0.35)));
+            // Fog mostly burns off by midday.
+            if (fog > 0.01) fog *= FogHour(t);
         }
 
         /// <summary>
@@ -538,8 +617,32 @@ namespace SPTForecaster
         {
             var clouds = SkyClouds(x, t, rain, rain >= RainSteps[0]);
             var cover = Math.Max(0, Math.Min(1, (clouds + 0.9) / 1.9));
-            var n = (Fbm(x / 60 + 3.7, y / 60 + 1.9, t / 2700) - 0.25) / 0.5;
+            var n = (CloudNoise(x, y, t) - 0.25) / 0.5;
             return Smoothstep(1 - cover - 0.28, 1 - cover + 0.28, n);
+        }
+
+        private const double CloudWindow = 6 * 3600;
+
+        /// <summary>
+        /// The broken-cloud pattern, carried along by the wind like the storms. The wind's direction is held
+        /// for each six-hour window (so the drift needs no history), and the last hour and a half of a window
+        /// fades into the next window's pattern.
+        /// </summary>
+        private static double CloudNoise(double x, double y, double t)
+        {
+            var k = Math.Floor(t / CloudWindow);
+            var a = DriftingClouds(x, y, t, k);
+            var s = Smoothstep(0.75, 1, (t - k * CloudWindow) / CloudWindow);
+            return s <= 0 ? a : a + (DriftingClouds(x, y, t, k + 1) - a) * s;
+        }
+
+        private static double DriftingClouds(double x, double y, double t, double window)
+        {
+            var start = window * CloudWindow;
+            Wind(start, out var dir, out _);
+            var d = Speed * (t - start - CloudWindow / 2);
+            var shift = window % 64 * 7.3;
+            return Fbm((x - Math.Cos(dir) * d) / 60 + 3.7 + shift, (y - Math.Sin(dir) * d) / 60 + 1.9 + shift, t / 10800, true);
         }
 
         /// <summary>
