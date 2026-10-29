@@ -3,7 +3,7 @@
 Weather radar over SPT's location map, a forecast box on top of the time bar, and raid weather that matches
 both. Each map has its own weather, read from one storm field. Two halves: a BepInEx client plugin
 (`src/SPTForecaster`, net472) and an SPT 4.1 server mod (`src/SPTForecaster.Server`, net10.0). Repo
-https://github.com/JoelHauser/SPTForecaster (public). Design: README.md. Browser prototype the client's
+https://github.com/JoelHauser/SPTForecaster (public). README.md is a short user-facing summary; the design detail is here. Browser prototype the client's
 weather model is ported from: docs/radar-prototype.html (keep the two in step).
 
 ## NEXT: the home test of 0.2.1
