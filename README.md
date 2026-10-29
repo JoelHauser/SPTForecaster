@@ -2,7 +2,7 @@
 
 Weather for SPT's location screen: a radar over the map showing storms moving across the region, and a forecast on top of the time bar saying what the weather will do during that raid. Each map has its own weather, and the raid gets exactly what the forecast said.
 
-**Status: 0.2.0.** The location screen (radar and forecast) was tested in game in 0.1.0; 0.2.0's additions (radar key and playback, seasonal St Petersburg weather, fog strengths, blizzards, thunderstorms with lightning and thunder) and in-raid weather matching the forecast are not confirmed in game yet. Requires SPT 4.1.
+**Status: 0.2.1.** The location screen (radar and forecast) was tested in game in 0.1.0; 0.2.x's additions (radar key and playback, seasonal St Petersburg weather, fog strengths, blizzards, thunderstorms with lightning and thunder) and in-raid weather matching the forecast are not confirmed in game yet. Requires SPT 4.1.
 
 ## Install
 
@@ -15,12 +15,12 @@ Download `SPTForecaster-<version>.zip` from [Releases](https://github.com/JoelHa
 Both halves are needed. Settings (F12):
 - **Forecast:** show the forecast, make raid weather follow it, lock the weather when you confirm a slot, fog thickness (how thick fog looks in raid; the words don't change).
 - **Radar:** show the radar, radar opacity, show the radar key, play the raid on the radar.
-- **Storms:** lightning and thunder on or off, thunder volume.
+- **Storms:** lightning and thunder on or off, lightning brightness, thunder volume.
 - **Debug:** log the forecast and the applied raid weather; force one weather pattern everywhere (radar, forecast and raid); preview the location screen up to 48 in-game hours ahead.
 
 **Works with:**
 - [Deploy Screen Overhaul](https://github.com/JoelHauser/LoadingRaid) (releases after 1.1.0): it lights your PMC for the weather the forecast gives the raid. The forecast box stays on the location screen and never appears on the confirm screen.
-- [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast. SPTForecaster reads CloudSix's "Min Cloud Transition Time" and keeps cloud changes at least that gradual, so the clouds keep pace with the card.
+- [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast. SPTForecaster reads CloudSix's "Min Cloud Transition Time" and keeps cloud changes at least that gradual, so the clouds keep pace with the card. Lightning lights CloudSix's clouds too.
 - [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): its faction map shows through underneath the radar.
 - [TimeWeatherChanger](https://gitlab.com/flir063-spt/timeweatherchanger) (2.8.0): its panel's weather is the game's debug override, which sits on top of the forecast's weather while it is on and hands back to it when switched off; SPTForecaster's blizzard steps aside meanwhile. Moving the time with it moves you along this map's forecast weather (the raid's weather covers a day either way). While its weather is on, the forecast card describes the forecast, not what you set.
 
@@ -45,7 +45,7 @@ Previews (open in a browser): [docs/radar-prototype.html](docs/radar-prototype.h
 - Changes too close together to get their own time are folded into one, so a card never lists two changes at the same minute.
 - Fog comes in four strengths: mist, fog, dense fog and thick fog. Thick fog is rare (about one autumn raid in a hundred) and hides you from bots as much as it hides them from you. Fog under rain or snow is named ("Rain and dense fog"). "All raid" only when the weather really doesn't change. No temperatures.
 - **Blizzards.** In winter, snow in a strong wind is a blizzard (about one winter raid in twenty): the card says so, and the raid gets the game's own blizzard, the driven snow BSG only uses for live events, easing in and out at the minutes the card names. In SPT's Storm season the game keeps its blizzard on, and the card calls the heavier snow a blizzard.
-- **Thunderstorms.** Rain (not light rain) in an hour the season makes electric is a thunderstorm: in about one summer raid in ten, one in twenty in spring, a few in early autumn, none in winter (St Petersburg's thunder days). The card says "Thunderstorm" with the game's thunder-cloud icon. In raid, lightning flashes and thunder follows, the sound arriving later the further the strike (a storm 10 km off is heard before it arrives), quieter and duller with distance. The flash is the game's own sun/moon light, so walls block it and it shows through windows and doorways; the thunder plays through the game's outdoor-rain sound, which the game muffles by where you are: full outside, muffled in a basement with windows, nothing in a sealed bunker. The thunder is real recordings ([credits](THUNDER_CREDITS.md)).
+- **Thunderstorms.** Rain (not light rain) in an hour the season makes electric is a thunderstorm: in about one summer raid in ten, one in twenty in spring, a few in early autumn, none in winter (St Petersburg's thunder days). The card says "Thunderstorm" with the game's thunder-cloud icon. In raid, lightning flashes and thunder follows, the sound arriving later the further the strike (a storm 10 km off is heard before it arrives), quieter and duller with distance. The flash lights the whole sky the way lightning does: a brief blue-white glow over the outdoors and the clouds (the game's or CloudSix's), seen through windows and doorways but not inside closed rooms, bright at night and faint at midday; the thunder plays through the game's outdoor-rain sound, which the game muffles by where you are: full outside, muffled in a basement with windows, nothing in a sealed bunker. The thunder is real recordings ([credits](THUNDER_CREDITS.md)).
 - Icons are the game's own weather icons, plus glyphs drawn in the same style for what the game has no icon for: light snow, snow, heavy snow, blizzard, mist, dense fog, thick fog, and the night skies (the game names night icons but doesn't ship them).
 
 **Weather patterns.** The region is always in one weather pattern, in 8-in-game-hour steps, and patterns follow on from each other the way real weather does: fine weather tends to last (a spell is about a day of in-game time, around three real hours), and when it breaks it goes the usual way, cloud thickening, then a front or steady rain, showers behind it, then clearing. Weather already in the sky carries over, so patterns hand over gradually.

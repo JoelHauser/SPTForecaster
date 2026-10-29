@@ -8,7 +8,7 @@ namespace SPTForecaster
     public class ForecasterPlugin : BaseUnityPlugin
     {
         /// <summary>Must match the csproj Version and the server mod's.</summary>
-        public const string PluginVersion = "0.2.0";
+        public const string PluginVersion = "0.2.1";
 
         internal static ManualLogSource Log;
 
@@ -22,6 +22,7 @@ namespace SPTForecaster
         internal static ConfigEntry<bool> PlayRadar;
         internal static ConfigEntry<bool> Lightning;
         internal static ConfigEntry<float> ThunderVolume;
+        internal static ConfigEntry<float> LightningBrightness;
         internal static ConfigEntry<bool> VerboseLog;
         internal static ConfigEntry<WeatherPattern> ForcePattern;
         internal static ConfigEntry<int> PreviewHours;
@@ -48,7 +49,9 @@ namespace SPTForecaster
             ShowRadarKey = Config.Bind("Radar", "Show radar key", true,
                 "Show which radar colour means which weather, in the map's bottom-right corner.");
             Lightning = Config.Bind("Storms", "Lightning and thunder", true,
-                "Lightning flashes and thunder while a thunderstorm is over or near the map. Walls block the flash and the game's own indoor sound muffles the thunder.");
+                "Lightning flashes and thunder while a thunderstorm is over or near the map. The flash lights the sky and the outdoors (and shows through windows, not in closed rooms); the game's own indoor sound muffles the thunder.");
+            LightningBrightness = Config.Bind("Storms", "Lightning brightness", 1f,
+                new ConfigDescription("How bright lightning flashes are. It always shows more at night than by day.", new AcceptableValueRange<float>(0f, 2f)));
             ThunderVolume = Config.Bind("Storms", "Thunder volume", 1f,
                 new ConfigDescription("How loud thunder is, on top of the game's own volume settings.", new AcceptableValueRange<float>(0f, 1.5f)));
             PlayRadar = Config.Bind("Radar", "Play the raid on the radar", true,
@@ -84,7 +87,6 @@ namespace SPTForecaster
             Enable(new SlotChangedPatch());
             Enable(new LocationSelectedPatch());
             Enable(new SetWeatherNodesPatch());
-            Enable(new ThunderLightPatch());
             Thunder.LoadClips(this, System.IO.Path.GetDirectoryName(Info.Location));
 
             Log.LogInfo($"SPTForecaster {PluginVersion} loaded.");
@@ -116,7 +118,7 @@ namespace SPTForecaster
             }
         }
 
-        private static void Enable(SPT.Reflection.Patching.ModulePatch patch)
+        internal static void Enable(SPT.Reflection.Patching.ModulePatch patch)
         {
             try
             {

@@ -23,8 +23,8 @@ namespace SPTForecaster
     /// block when the raid's weather is set). Each is a flash, then its thunder after the sound has travelled
     /// (distance / 343 m/s), quieter and more muffled the further away.
     ///
-    /// - The flash brightens the game's own sun/moon light for a few flickers (ThunderLightPatch), so walls
-    ///   block it the way they block daylight, and it shows through windows and doorways.
+    /// - The flash (LightningFlash) lights the sky, the outdoor ambient, the clouds and, more weakly, the
+    ///   sun/moon light for a few flickers: a blue-white glow outdoors and through windows, not in rooms.
     /// - The thunder plays through the same mixer group as the game's outdoor rain, which the game turns
     ///   down and muffles by the room the player is in and the windows and doors to the outside (its
     ///   portal system): full outdoors, muffled in a basement with windows, silent in a sealed bunker. A
@@ -46,7 +46,7 @@ namespace SPTForecaster
         /// <summary>Per weather block on the raid clock: from tick, to tick, storm distance (frame units).</summary>
         private static readonly List<double[]> Spans = new List<double[]>();
 
-        /// <summary>The light added to the sun/moon this frame by lightning (read by ThunderLightPatch).</summary>
+        /// <summary>This frame's lightning: 0 none, about 1 a strike overhead (drawn by LightningFlash).</summary>
         public static float Flash;
 
         private readonly List<AudioSource> _sources = new List<AudioSource>();
@@ -122,6 +122,7 @@ namespace SPTForecaster
             var weather = WeatherController.Instance;
             if (weather == null) return;
             if (weather.GetComponent<Thunder>() == null) weather.gameObject.AddComponent<Thunder>();
+            LightningFlash.Hook();
             if (ForecasterPlugin.VerboseLog.Value)
             {
                 ForecasterPlugin.Log.LogInfo($"Thunder: storms within earshot in {Spans.Count} of this raid's weather blocks.");
@@ -184,8 +185,8 @@ namespace SPTForecaster
                 ? Random.Range(250f, 3000f)
                 : Mathf.Max(400f, (float)(units * Field.MetresPerUnit) + Random.Range(-1500f, 1500f));
 
-            // The flash: a few flickers, bright close by and faint far off.
-            var power = 3f / (1f + (metres / 1800f) * (metres / 1800f));
+            // The flash: a few flickers, 1 close by, half at 1.8 km, faint far off.
+            var power = 1f / (1f + (metres / 1800f) * (metres / 1800f));
             var t = Time.unscaledTime;
             var flickers = Random.Range(1, 5);
             for (var i = 0; i < flickers; i++)
@@ -211,7 +212,7 @@ namespace SPTForecaster
                 total += p[2] * (k <= 1f ? 1f - 0.5f * k : 0.5f * Mathf.Exp(-(now - p[0] - p[1]) * 18f));
             }
 
-            return total;
+            return Mathf.Min(total, 1.5f);
         }
 
         private IEnumerator Rumble(float metres, float delay)
@@ -285,6 +286,7 @@ namespace SPTForecaster
         private void OnDestroy()
         {
             Flash = 0;
+            LightningFlash.Unhook();
         }
     }
 }

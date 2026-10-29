@@ -11,7 +11,7 @@ public class Startup(WeatherSeed weather, ISptLogger<Startup> logger) : IOnLoad
     public Task OnLoadAsync(CancellationToken cancellationToken)
     {
         _ = weather.Seed;
-        logger.Success("[SPTForecaster] 0.2.0 loaded, weather seed ready.");
+        logger.Success("[SPTForecaster] 0.2.1 loaded, weather seed ready.");
         return Task.CompletedTask;
     }
 }

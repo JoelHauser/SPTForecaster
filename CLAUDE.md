@@ -6,9 +6,11 @@ both. Each map has its own weather, read from one storm field. Two halves: a Bep
 https://github.com/JoelHauser/SPTForecaster (public). Design: README.md. Browser prototype the client's
 weather model is ported from: docs/radar-prototype.html (keep the two in step).
 
-## NEXT: the home test of 0.2.0
+## NEXT: the home test of 0.2.1
 
-0.2.0 (2026-10-29, built on the work machine against the patched mirror) adds, all unseen in game: radar
+0.2.1 (2026-10-29) reworks the lightning flash (see Thunderstorms; 0.2.0's flash added to TOD's light
+intensity every frame, but TOD only resets it every 0-1 s by shadow quality, so it built up). 0.2.0
+(2026-10-29, built on the work machine against the patched mirror) adds, all unseen in game: radar
 colours matching the card, radar key, raid playback, season-aware St Petersburg weather (Markov patterns),
 four fog strengths with their own colours and the Fog thickness setting, blizzards (the game's own storm
 snow), glyphs (snow, blizzard, fog strengths, night skies), thunderstorms with lightning and thunder,
@@ -78,8 +80,18 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
   5 % spring, 3 % autumn. Card "Thunderstorm" + EWeatherType.ThunderCloud. `Field.ThunderDistance` searches
   rings out to 250 units (1 unit = 40 m) for rain ≥ RainSteps[1] in an electric hour. `Thunder` (component on
   WeatherController's GameObject): spans per block within the raid ± 1 h; strike rate 1/22 s overhead to
-  1/60 s at 10 km; flash = pulses added to TOD light in `ThunderLightPatch` (postfix TOD_Sky.LateUpdate,
-  also shadowStrength 1 so walls block it fully); thunder after distance/343 s, volume and low-pass by
+  1/60 s at 10 km; flash = pulses (`Thunder.Flash`, 1 overhead, 0.5 at 1.8 km), drawn by `LightningFlash` in
+  `Camera.onPreCull` (after every LateUpdate): × time of day (1 night .. 0.25 noon, TOD `LerpValue`) × config
+  `Lightning brightness`; blue-white; adds to the outdoor ambient SH (`ToDController.SH` → its
+  `AmbientLightScript.SetSH`, mostly from above; interiors have their own ambient volumes, so rooms stay dark),
+  TOD's sky colour globals (`TOD_MoonSkyColor`/`TOD_SunSkyColor`), and a smaller share to the TOD light's
+  intensity and colour (game's shadows and cloud cookie still apply). TOD sets intensity only every
+  `Light.UpdateInterval` (ToDController: 1/0.5/0.1/0 s by shadow quality), so the game's value is tracked
+  and put back; everything else the game rewrites each frame. Vanilla clouds light from the sun light at
+  render time, so they flash; CloudSix's via `CloudSixFlashPatch` (postfix on its
+  `CustomCloudController.UpdateMaterial`: `_MoonIntensity`, `_MoonColor`, `_AmbientColor`; enabled at the
+  first raid with lightning, when every plugin has loaded). CloudSix's eye adaptation may dim the view a
+  little after a big flash. Thunder after distance/343 s, volume and low-pass by
   distance, through the outdoor `PrecipitationAmbientBlender._outputMixerGroup` (the game muffles it by room
   and portals), silent in rooms with OutdoorAmbientVolume ~0. TimeWeatherChanger's thunder slider drives an
   overhead storm while its override is on. Clips: assets/thunder (12, 4 near / 8 far), cut by
@@ -275,8 +287,8 @@ touches button colours.
 
 ## What the first test has to look at
 
-1. Server console: `[SPTForecaster] 0.2.0 loaded, weather seed ready.` BepInEx log:
-   `SPTForecaster 0.2.0 loaded.`, `Thunder: 4 near and 8 far clips loaded.`, `Radar attached under '...' at sibling N, size WxH`, no "Could not ...".
+1. Server console: `[SPTForecaster] 0.2.1 loaded, weather seed ready.` BepInEx log:
+   `SPTForecaster 0.2.1 loaded.`, `Thunder: 4 near and 8 far clips loaded.`, `Radar attached under '...' at sibling N, size WxH`, no "Could not ...".
 2. Radar on the map: lined up with the buttons? Above the map art, below the buttons and route lines?
    Light rain see-through? With TushonkaTerritories, its colours visible underneath? F12 opacity works?
    Any hitch when it redraws (every 5 s)?
@@ -297,7 +309,10 @@ touches button colours.
 13. Blizzard (set weather.json `overrideSeason` to 2 and force Storm front or wait): card "Blizzard", in raid
     driven snow easing in around the named minute; log `Blizzard: N spell(s)`.
 14. Thunderstorm (summer, force Storm front): card "Thunderstorm" with the thunder-cloud icon; in raid the
-    flash outdoors and through windows but not through walls, thunder after the flash, quieter far off.
+    flash lights the sky and the outdoors (night: bright but not daylight; noon: faint), shows through
+    windows but not in closed rooms, no hard moon-angle shadows, light falls back to normal after each
+    flash; clouds flash (with and without CloudSix; log `Lightning lights CloudSix's clouds.`); tune with
+    `Storms / Lightning brightness`. Thunder after the flash, quieter far off.
     Log `Thunder plays through mixer group '...'`. Reserve bunker: silent. Shoreline resort basement: muffled.
 15. TimeWeatherChanger: its weather overrides ours and hands back; moving the time keeps the weather sane;
     its thunder slider makes lightning.

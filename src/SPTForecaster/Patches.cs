@@ -435,26 +435,4 @@ namespace SPTForecaster
             list.Add(Forecast.ToNode(b, ticks));
         }
     }
-
-    /// <summary>
-    /// The lightning flash: TOD_Sky sets its sun/moon light every frame in LateUpdate; after it, add the flash
-    /// (Thunder.Flash) and, while it lasts, full shadow strength, so walls block it completely (at night the
-    /// moonlight's shadows are weak, which would let a flash glow through them). Windows and doorways let it in
-    /// as they let in daylight. TOD resets both next frame.
-    /// </summary>
-    internal sealed class ThunderLightPatch : ModulePatch
-    {
-        protected override MethodBase GetTargetMethod() => AccessTools.Method(typeof(TOD_Sky), nameof(TOD_Sky.LateUpdate));
-
-        [PatchPostfix]
-        private static void Postfix(TOD_Sky __instance)
-        {
-            var flash = Thunder.Flash;
-            if (flash <= 0.001f) return;
-            var light = __instance.Components != null ? __instance.Components.LightSource : null;
-            if (light == null) return;
-            light.intensity += flash;
-            light.shadowStrength = 1f;
-        }
-    }
 }
