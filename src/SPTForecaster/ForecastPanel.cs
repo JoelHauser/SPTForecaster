@@ -113,7 +113,10 @@ namespace SPTForecaster
                 var now = Schedule.ScreenNow;
                 var rightSelected = _panel._pmTimeToggle != null && _panel._pmTimeToggle.isOn && _panel._pmTimeToggle.gameObject.activeInHierarchy;
                 var start = rightSelected ? now + Schedule.HalfDaySeconds : now;
-                RadarLayer.TargetTime = start;
+                var raidMinutes = _location != null && _location.EscapeTimeLimit > 0 ? _location.EscapeTimeLimit : 40;
+                // The radar plays the raid through only on maps with weather of their own.
+                var weather = _location != null && !Maps.NoForecast(_location.Id) && Maps.Position(_location.Id, out _, out _);
+                RadarLayer.SetTarget(start, raidMinutes, _location?.Id, rightSelected, weather);
 
                 EnsureView(rebuildLayout);
                 if (_view == null) return;
@@ -132,7 +135,6 @@ namespace SPTForecaster
                     return;
                 }
 
-                var raidMinutes = _location.EscapeTimeLimit > 0 ? _location.EscapeTimeLimit : 40;
                 var forecast = Build(start, raidMinutes);
                 _view.Show(forecast, heading);
 

@@ -24,7 +24,7 @@ public class ForecastRouter(JsonUtil jsonUtil, WeatherSeed weather)
     private static string Respond(WeatherSeed weather) =>
         JsonSerializer.Serialize(new
         {
-            version = "0.1.0",
+            version = "0.2.0",
             seed = weather.Seed,
             season = weather.Season,
             acceleration = weather.Acceleration,

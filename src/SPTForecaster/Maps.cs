@@ -29,16 +29,28 @@ namespace SPTForecaster
             if (settings?.locations == null) return;
             foreach (var location in settings.locations.Values)
             {
-                if (location?.Id == null || (location.IconX == 0 && location.IconY == 0)) continue;
+                if (location?.Id == null) continue;
+                if (location.EscapeTimeLimit > 0) RaidTimes[location.Id] = location.EscapeTimeLimit;
+                if (location.IconX == 0 && location.IconY == 0) continue;
                 Icons[location.Id] = new double[] { location.IconX, location.IconY };
             }
         }
 
         public static void Remember(LocationSettings.Location location)
         {
-            if (location?.Id == null || (location.IconX == 0 && location.IconY == 0)) return;
+            if (location?.Id == null) return;
+            if (location.EscapeTimeLimit > 0) RaidTimes[location.Id] = location.EscapeTimeLimit;
+            if (location.IconX == 0 && location.IconY == 0) return;
             Icons[location.Id] = new double[] { location.IconX, location.IconY };
         }
+
+        /// <summary>
+        /// Raid minutes per location id, as this player's server sets them (EscapeTimeLimit). Servers differ
+        /// (SVM and the like change them), so nothing assumes a length; 0 when not seen yet.
+        /// </summary>
+        private static readonly Dictionary<string, int> RaidTimes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        public static int RaidMinutes(string id) => id != null && RaidTimes.TryGetValue(id, out var m) ? m : 0;
 
         /// <summary>Where a location sits in the field's 600 x 400 frame (y down).</summary>
         public static bool Position(string id, out double x, out double y)

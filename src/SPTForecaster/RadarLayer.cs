@@ -14,19 +14,39 @@ namespace SPTForecaster
     ///
     /// The picture is rendered on a worker thread and uploaded when ready, so the menu never stutters.
     /// It shows the selected time slot's weather and redraws every few seconds as the clock moves.
+    ///
+    /// Playback: when a map and slot are picked, the radar plays that raid through (its own raid length)
+    /// twice and then rests on the raid's start. One play holds on the start, runs the raid in
+    /// <see cref="PlaySeconds"/>, holds on the end and fades out; the next play, or the rest, fades back in.
+    /// Frames are rendered one after another at the true in-game time, so storms slide rather than jump.
+    /// Timings were picked in docs/radar-prototype.html (2026-10-29).
     /// </summary>
     internal sealed class RadarLayer : MonoBehaviour
     {
         private const float RedrawSeconds = 5f;
+        private const float PlaySeconds = 12f, HoldSeconds = 1f, FadeSeconds = 0.5f, WaitSeconds = 0.5f;
+        private const int Plays = 2;
+        private const float FrameSeconds = 1f / 30f;
 
         /// <summary>The Tarkov second to show: the selected slot's raid start (set by the forecast panel).</summary>
         public static double? TargetTime;
+
+        /// <summary>The selected raid's length in raid minutes and its location, for playback.</summary>
+        public static int RaidMinutes = 40;
+        public static string PlayLocation { get; private set; }
+
+        /// <summary>Where playback is in the raid, 0..1, or null when the radar rests on the start.</summary>
+        public static float? PlayProgress { get; private set; }
+
+        private static string _slotKey;
 
         /// <summary>
         /// What to show when the forecast panel isn't up (no map selected yet, or Labs): the slot the player
         /// last chose, at the same "now" the panel uses, so selecting a map doesn't make the radar jump.
         /// </summary>
-        private static double ShownTime => TargetTime ?? Schedule.ScreenNow + (SlotMemory.RightSlot ? Schedule.HalfDaySeconds : 0);
+        private static double RestTime => BlockStart(TargetTime ?? Schedule.ScreenNow + (SlotMemory.RightSlot ? Schedule.HalfDaySeconds : 0));
+
+        private double ShownTime => RestTime + _scrub * RaidMinutes * 60.0 * Schedule.Acceleration;
 
         private static RadarLayer _live;
 
@@ -38,6 +58,91 @@ namespace SPTForecaster
         private double _pendingTime;
         private float _lastOpacity = -1f;
         private bool _lastWinter;
+
+        private float _queuedAt = -1f, _playStart = -1f, _restFrom = -1f, _nextFrame;
+        private bool _playing;
+        private float _scrub, _alpha = 1f;
+
+        /// <summary>
+        /// The forecast panel's slot, every refresh. A different map or slot (re)starts playback after a short
+        /// wait, so clicking through maps doesn't keep restarting it; the same one again changes nothing.
+        /// </summary>
+        public static void SetTarget(double start, int raidMinutes, string locationId, bool rightSlot, bool play)
+        {
+            TargetTime = start;
+            RaidMinutes = raidMinutes > 0 ? raidMinutes : 40;
+            var key = locationId + (rightSlot ? " right" : " left");
+            if (key == _slotKey) return;
+            _slotKey = key;
+            PlayLocation = play ? locationId : null;
+            if (_live != null) _live.Queue(play);
+        }
+
+        private void Queue(bool play)
+        {
+            _playing = false;
+            _scrub = 0f;
+            _restFrom = -1f;
+            _alpha = 1f;
+            PlayProgress = null;
+            _queuedAt = play && ForecasterPlugin.PlayRadar.Value ? Time.unscaledTime + WaitSeconds : -1f;
+            _nextRedraw = 0;
+        }
+
+        /// <summary>Advances playback: the position in the raid and how visible the picture is.</summary>
+        private void Advance(float now)
+        {
+            if (_queuedAt >= 0f && now >= _queuedAt)
+            {
+                _queuedAt = -1f;
+                _playing = true;
+                _playStart = now;
+            }
+
+            if (_playing && (TargetTime == null || !ForecasterPlugin.PlayRadar.Value)) Queue(false);
+
+            _alpha = 1f;
+            if (_playing)
+            {
+                const float cycle = HoldSeconds + PlaySeconds + HoldSeconds + FadeSeconds;
+                var c = now - _playStart;
+                var n = (int)(c / cycle);
+                var w = c - n * cycle;
+                if (n >= Plays)
+                {
+                    _playing = false;
+                    _scrub = 0f;
+                    _restFrom = now;
+                }
+                else if (w < HoldSeconds)
+                {
+                    _scrub = 0f;
+                    if (n > 0 && w < FadeSeconds) _alpha = w / FadeSeconds;
+                }
+                else if (w < HoldSeconds + PlaySeconds) _scrub = (w - HoldSeconds) / PlaySeconds;
+                else if (w < HoldSeconds + PlaySeconds + HoldSeconds) _scrub = 1f;
+                else
+                {
+                    _scrub = 1f;
+                    _alpha = 1f - (w - HoldSeconds - PlaySeconds - HoldSeconds) / FadeSeconds;
+                }
+            }
+
+            if (!_playing && _restFrom >= 0f)
+            {
+                _alpha = Mathf.Clamp01((now - _restFrom) / FadeSeconds);
+                if (now - _restFrom >= FadeSeconds) _restFrom = -1f;
+            }
+
+            PlayProgress = _playing ? _scrub : (float?)null;
+        }
+
+        /// <summary>
+        /// The card and the raid read the weather once per <see cref="Field.Step"/> (14 in-game minutes, two
+        /// real ones), at the step's start, and hold it for the step; the radar rests on that same moment, so
+        /// what is over a map's button is exactly what its card opens with.
+        /// </summary>
+        private static double BlockStart(double t) => Math.Floor(t / Field.Step) * Field.Step;
 
         public static void Attach(Transform buttons, Transform paths)
         {
@@ -103,12 +208,17 @@ namespace SPTForecaster
             _image.enabled = false;
             _lastTime = double.NaN;
             _nextRedraw = 0;
+            _slotKey = null; // the slot the screen opens on plays again
+            Queue(false);
         }
 
         private void Update()
         {
             try
             {
+                var now = Time.unscaledTime;
+                Advance(now);
+                _image.color = new Color(1f, 1f, 1f, _alpha);
                 var t = ShownTime;
                 if (_pending != null && _pending.IsCompleted)
                 {
@@ -129,10 +239,13 @@ namespace SPTForecaster
 
                 var opacity = ForecasterPlugin.RadarOpacity.Value;
                 var changed = Math.Abs(t - _lastTime) > 60 * Schedule.Acceleration || opacity != _lastOpacity || Schedule.Winter != _lastWinter;
-                if (_pending != null || (Time.unscaledTime < _nextRedraw && !changed)) return;
+                // While playing, a new frame as soon as the last is up (at most 30 a second).
+                if (_playing && t != _lastTime && now >= _nextFrame) changed = true;
+                if (_pending != null || (now < _nextRedraw && !changed)) return;
                 if (!Schedule.Ready()) return;
 
-                _nextRedraw = Time.unscaledTime + RedrawSeconds;
+                _nextRedraw = now + RedrawSeconds;
+                _nextFrame = now + FrameSeconds;
                 _lastTime = t;
                 _pendingTime = t;
                 _lastOpacity = opacity;
@@ -144,6 +257,7 @@ namespace SPTForecaster
             {
                 ForecasterPlugin.Log.LogError("Radar update failed: " + ex);
                 _nextRedraw = Time.unscaledTime + 30f;
+                Queue(false);
             }
         }
 

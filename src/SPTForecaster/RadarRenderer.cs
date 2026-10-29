@@ -16,23 +16,59 @@ namespace SPTForecaster
         public const int Width = 480, Height = 320;
         private const int GridW = 121, GridH = 81;
 
-        // [from intensity, r, g, b, opacity]
-        private static readonly double[][] RainBands =
+        // One colour per level the forecast card names, changing exactly where the card's level changes
+        // (Field.RainSteps), so the colour over a map's button is the word on its card: light rain, rain,
+        // heavy rain, and the heaviest cores (still "heavy rain" on the card). [r, g, b, opacity]
+        private static readonly double[][] RainColours =
         {
-            new double[] { 0.08, 118, 200, 110, 0.13 }, new double[] { 0.16, 56, 168, 72, 0.18 }, new double[] { 0.26, 28, 128, 52, 0.24 },
-            new double[] { 0.38, 232, 214, 64, 0.32 }, new double[] { 0.52, 240, 150, 42, 0.4 }, new double[] { 0.68, 222, 56, 44, 0.48 },
-            new double[] { 0.84, 168, 24, 72, 0.56 },
+            new double[] { 86, 190, 92, 0.2 }, new double[] { 236, 208, 58, 0.32 },
+            new double[] { 232, 104, 40, 0.44 }, new double[] { 196, 28, 92, 0.56 },
         };
 
-        private static readonly double[][] SnowBands =
+        private static readonly double[][] SnowColours =
         {
-            new double[] { 0.08, 150, 186, 232, 0.13 }, new double[] { 0.16, 118, 160, 226, 0.18 }, new double[] { 0.26, 86, 132, 214, 0.24 },
-            new double[] { 0.38, 150, 200, 250, 0.32 }, new double[] { 0.52, 196, 224, 255, 0.4 }, new double[] { 0.68, 230, 240, 255, 0.48 },
-            new double[] { 0.84, 255, 255, 255, 0.56 },
+            new double[] { 168, 206, 246, 0.2 }, new double[] { 98, 150, 236, 0.32 },
+            new double[] { 58, 92, 222, 0.44 }, new double[] { 70, 40, 176, 0.56 },
         };
+
+        // Fog, at the strengths the card calls fog and dense fog (Field.FogSteps): mauve, so it can't be
+        // mistaken for cloud (white), rain (green to magenta) or snow (blues). A sandy grey read as cloud.
+        // Each strength its own shade, deeper and stronger as it thickens, the way the rain colours climb:
+        // mist a pale lilac, fog mauve, dense fog orchid, thick fog deep purple. [r, g, b] and opacity.
+        internal static readonly double[][] FogColours =
+        {
+            new double[] { 210, 200, 228 }, new double[] { 200, 150, 225 }, new double[] { 172, 100, 212 }, new double[] { 128, 56, 178 },
+        };
+
+        internal static readonly double[] FogOpacity = { 0.12, 0.2, 0.28, 0.36 }; // mist, fog, dense, thick
+
+        /// <summary>The fog veil's colour and opacity: a step at each strength the card names (Field.FogSteps).</summary>
+        private static float FogShade(float f, out float r, out float g, out float b)
+        {
+            double a = 0, cr = FogColours[0][0], cg = FogColours[0][1], cb = FogColours[0][2];
+            double prev = 0;
+            for (var i = 0; i < FogOpacity.Length; i++)
+            {
+                var s = Step(f, Field.FogSteps[i], 0.012);
+                a += (FogOpacity[i] - prev) * s;
+                prev = FogOpacity[i];
+                cr += (FogColours[i][0] - cr) * s; cg += (FogColours[i][1] - cg) * s; cb += (FogColours[i][2] - cb) * s;
+            }
+
+            r = (float)cr; g = (float)cg; b = (float)cb;
+            return (float)a;
+        }
+        internal static readonly double[] CloudColour = { 214, 218, 216 };
+
+        /// <summary>The colours the key shows for rain (or snow), lightest level first.</summary>
+        internal static double[][] Colours(bool winter) => winter ? SnowColours : RainColours;
 
         /// <summary>Cloud at its thickest: fainter than fog, so the map stays readable under overcast.</summary>
         private const float CloudAlpha = 0.14f;
+
+        // Nothing is drawn below the first rain and fog levels: the card calls those dry and clear.
+        private static readonly float MinRain = (float)Field.RainSteps[0] - 0.01f;
+        private static readonly float MinFog = (float)Field.FogSteps[0] - 0.013f;
 
         private static readonly int[] TapXi, TapYi;
         private static readonly float[] TapXw, TapYw;
@@ -93,17 +129,16 @@ namespace SPTForecaster
         {
             if (winter && _snowLut != null) return _snowLut;
             if (!winter && _rainLut != null) return _rainLut;
-            var bands = winter ? SnowBands : RainBands;
+            var bands = Colours(winter);
             var lut = new float[1024 * 4];
             const double aa = 0.009;
             for (var v = 0; v < 1024; v++)
             {
-                double x = v / 1023.0, r = bands[0][1], g = bands[0][2], b = bands[0][3], a = 0;
-                foreach (var band in bands)
+                double x = v / 1023.0, r = bands[0][0], g = bands[0][1], b = bands[0][2], a = 0;
+                for (var k = 0; k < bands.Length; k++)
                 {
-                    var s = Math.Min(1, Math.Max(0, (x - (band[0] - aa)) / (2 * aa)));
-                    s = s * s * (3 - 2 * s);
-                    r += (band[1] - r) * s; g += (band[2] - g) * s; b += (band[3] - b) * s; a += (band[4] - a) * s;
+                    var s = Step(x, Field.RainSteps[k], aa);
+                    r += (bands[k][0] - r) * s; g += (bands[k][1] - g) * s; b += (bands[k][2] - b) * s; a += (bands[k][3] - a) * s;
                 }
 
                 lut[v * 4] = (float)r; lut[v * 4 + 1] = (float)g; lut[v * 4 + 2] = (float)b; lut[v * 4 + 3] = (float)a;
@@ -113,13 +148,33 @@ namespace SPTForecaster
             return lut;
         }
 
-        /// <summary>The radar at Tarkov second <paramref name="t"/>, bottom row first (Unity's texture order).</summary>
+        /// <summary>0 below <paramref name="edge"/>, 1 above, with an antialiased step <paramref name="aa"/> either side.</summary>
+        private static double Step(double x, double edge, double aa)
+        {
+            var s = Math.Min(1, Math.Max(0, (x - (edge - aa)) / (2 * aa)));
+            return s * s * (3 - 2 * s);
+        }
+
+        // Working buffers, reused: playback renders up to 30 frames a second, and fresh ~1 MB of arrays per
+        // frame would keep the garbage collector (and so the menu) busy.
+        private static readonly object Gate = new object();
+        private static readonly float[] Rain = new float[GridW * GridH], Fog = new float[GridW * GridH], Cloud = new float[GridW * GridH];
+        private static readonly float[] WideRain = new float[GridH * Width], WideFog = new float[GridH * Width], WideCloud = new float[GridH * Width];
+        private static readonly Color32[] Pixels = new Color32[Width * Height];
+
+        /// <summary>
+        /// The radar at Tarkov second <paramref name="t"/>, bottom row first (Unity's texture order). The array
+        /// returned is reused by the next call: upload it before rendering again.
+        /// </summary>
         public static Color32[] Render(double t, float opacity, bool winter)
         {
+            lock (Gate) return RenderLocked(t, opacity, winter);
+        }
+
+        private static Color32[] RenderLocked(double t, float opacity, bool winter)
+        {
             var cells = Field.ActiveCells(t);
-            var rain = new float[GridW * GridH];
-            var fog = new float[GridW * GridH];
-            var cloud = new float[GridW * GridH];
+            float[] rain = Rain, fog = Fog, cloud = Cloud;
             for (int gj = 0, n = 0; gj < GridH; gj++)
             {
                 for (var gi = 0; gi < GridW; gi++, n++)
@@ -131,9 +186,7 @@ namespace SPTForecaster
             }
 
             // Rows first, then columns.
-            var wideRain = new float[GridH * Width];
-            var wideFog = new float[GridH * Width];
-            var wideCloud = new float[GridH * Width];
+            float[] wideRain = WideRain, wideFog = WideFog, wideCloud = WideCloud;
             for (var j = 0; j < GridH; j++)
             {
                 int src = j * GridW, dst = j * Width;
@@ -152,7 +205,7 @@ namespace SPTForecaster
             }
 
             var lut = Lut(winter);
-            var pixels = new Color32[Width * Height];
+            var pixels = Pixels;
             for (var j = 0; j < Height; j++)
             {
                 var row = (Height - 1 - j) * Width; // frame y runs down; texture rows run up
@@ -166,22 +219,32 @@ namespace SPTForecaster
                         r += wideRain[at] * wy; f += wideFog[at] * wy; c += wideCloud[at] * wy;
                     }
 
-                    if (r < 0.06f && f < 0.15f && c < 0.03f) continue;
+                    if (r < MinRain && f < MinFog && c < 0.03f)
+                    {
+                        pixels[row + i] = default;
+                        continue;
+                    }
+
                     r = r < 0 ? 0 : r > 1 ? 1 : r;
                     f = f < 0 ? 0 : f > 1 ? 1 : f;
                     c = c < 0 ? 0 : c > 1 ? 1 : c;
                     var li = (int)Math.Round(r * 1023) * 4;
                     var ra = lut[li + 3];
-                    var fs = Math.Min(1f, Math.Max(0f, (f - 0.15f) / 0.45f));
-                    var fa = fs * fs * (3 - 2 * fs) * 0.16f * (1 - ra);
-                    var ca = c * CloudAlpha * (1 - ra) * (1 - fa / 0.16f);
+                    var fo = FogShade(f, out var fr, out var fg, out var fb);
+                    var fa = fo * (1 - ra);
+                    var ca = c * CloudAlpha * (1 - ra) * (1 - fo / (float)FogOpacity[FogOpacity.Length - 1]);
                     var a = (ra + fa + ca) * opacity * Edge[j * Width + i];
-                    if (a < 0.01f) continue;
+                    if (a < 0.01f)
+                    {
+                        pixels[row + i] = default;
+                        continue;
+                    }
+
                     var sum = ra + fa + ca;
                     pixels[row + i] = new Color32(
-                        (byte)((lut[li] * ra + 176 * fa + 214 * ca) / sum),
-                        (byte)((lut[li + 1] * ra + 176 * fa + 218 * ca) / sum),
-                        (byte)((lut[li + 2] * ra + 166 * fa + 216 * ca) / sum),
+                        (byte)((lut[li] * ra + fr * fa + CloudColour[0] * ca) / sum),
+                        (byte)((lut[li + 1] * ra + fg * fa + CloudColour[1] * ca) / sum),
+                        (byte)((lut[li + 2] * ra + fb * fa + CloudColour[2] * ca) / sum),
                         (byte)(Math.Min(1f, a) * 255));
                 }
             }

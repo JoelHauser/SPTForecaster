@@ -133,7 +133,7 @@ namespace SPTForecaster
             _root.SetActive(true);
 
             _heading.text = heading.ToUpperInvariant();
-            SetIcon(_headIcon, forecast.Headline?.Icon ?? EWeatherType.None);
+            SetIcon(_headIcon, forecast.Headline);
             _headText.text = forecast.Headline?.Text ?? "";
             _wind.text = forecast.Wind ?? "";
 
@@ -147,7 +147,7 @@ namespace SPTForecaster
 
                 _changeTexts[i].text = change?.Text ?? "";
                 _changeTexts[i].alpha = change != null && change.Faint ? FaintAlpha : 1f;
-                SetIcon(_changeIcons[i], change?.Icon ?? EWeatherType.None);
+                SetIcon(_changeIcons[i], change);
             }
         }
 
@@ -158,9 +158,12 @@ namespace SPTForecaster
         }
 
         /// <summary>An icon that isn't there still keeps its place, so the lines beside it stay lined up.</summary>
-        private static void SetIcon(Image icon, EWeatherType type)
+        private static void SetIcon(Image icon, ForecastLine line)
         {
-            var sprite = type == EWeatherType.None ? null : ResourcesCache.Pop<Sprite>("UI/WeatherIcons/" + type);
+            var type = line?.Icon ?? EWeatherType.None;
+            // Our glyph where the game has no icon (snow, blizzard, mist, dense/thick fog, night skies).
+            var sprite = line?.Glyph != null ? Glyphs.Get(line.Glyph) : null;
+            if (sprite == null && type != EWeatherType.None) sprite = ResourcesCache.Pop<Sprite>("UI/WeatherIcons/" + type);
             icon.sprite = sprite;
             icon.enabled = sprite != null;
         }
@@ -292,7 +295,7 @@ namespace SPTForecaster
         /// The panel's small caps label "SELECT TIME PHASE:": its smallest text that isn't a clock, the
         /// leftmost of a tie ("CURRENT WEATHER CONDITIONS:" is the same style, further right).
         /// </summary>
-        private static TextMeshProUGUI FindLabel(LocationConditionsPanel panel)
+        internal static TextMeshProUGUI FindLabel(LocationConditionsPanel panel)
         {
             TextMeshProUGUI best = null;
             foreach (var text in panel.GetComponentsInChildren<TextMeshProUGUI>(false))

@@ -17,6 +17,16 @@ namespace SPTForecaster
         public double Rain;
         public double RainIntensity;
         public double Fog;
+
+        /// <summary>0 none, 1 mist, 2 fog, 3 dense fog, 4 thick fog (<see cref="Field.FogNames"/>).</summary>
+        public int FogLevel;
+
+        /// <summary>Snow in a strong wind; in Winter the raid gets the game's blizzard (driven snow) for it.</summary>
+        public bool Blizzard;
+
+        /// <summary>Heavy rain with lightning and thunder: the card says Thunderstorm, the raid gets strikes.</summary>
+        public bool Thunder;
+
         public double Temperature;
         public double Pressure;
     }
@@ -44,10 +54,15 @@ namespace SPTForecaster
 
         public static double Acceleration { get; private set; } = 7;
 
-        /// <summary>ESeason as the server reports it (2 is winter).</summary>
+        /// <summary>The season as the server reports it (SPT's Season enum: 2 winter, 6 storm).</summary>
         public static int Season { get; private set; }
 
-        public static bool Winter => Season == 2;
+        /// <summary>
+        /// Whether the game draws falling snow: in Winter, and in the Storm season, which the client renders as
+        /// a blizzard (RainController's WinterStorm state, SnowFlakes.StormFactor 1). Every other season,
+        /// late autumn and early spring included, draws rain (RainController's summer-type states).
+        /// </summary>
+        public static bool Winter => Season == 2 || Season == 6;
 
         public static double TarkovNow =>
             OffsetSeconds + (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds * Acceleration;
@@ -80,6 +95,7 @@ namespace SPTForecaster
                 var json = JObject.Parse(body);
                 Acceleration = json.Value<double?>("acceleration") ?? 7;
                 Season = json.Value<int?>("season") ?? 0;
+                Field.Season = Season;
                 Field.Seed = json.Value<int>("seed");
                 _ready = true;
                 _fetchedAt = Time.realtimeSinceStartup;
@@ -91,7 +107,7 @@ namespace SPTForecaster
                 if (!_warned)
                 {
                     _warned = true;
-                    ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the SPTForecaster 0.0.2 server mod installed?");
+                    ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the SPTForecaster " + ForecasterPlugin.PluginVersion + " server mod installed?");
                 }
             }
         }

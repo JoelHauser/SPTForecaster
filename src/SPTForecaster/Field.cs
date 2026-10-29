@@ -27,28 +27,99 @@ namespace SPTForecaster
         private const double Speed = W * 1.1 / (9 * 3600);
 
         public static readonly double[] RainSteps = { 0.12, 0.3, 0.55, 0.8 };
-        private static readonly double[] FogSteps = { 0.38, 0.67 };
-        private static readonly double[] FogValues = { 0.0013, 0.0045, 0.0065 };
+        /// <summary>
+        /// Fog has four strengths the card names (<see cref="FogNames"/>). <see cref="FogValues"/> are what the
+        /// raid gets (ScaterringFogDensity): SPT's presets stop at 0.006, the game's own scales go far higher,
+        /// and bots' sight is cut more and more from 0.004 up to 0.01 (LookSensor), so dense and thick fog matter.
+        /// </summary>
+        public static readonly double[] FogSteps = { 0.3, 0.45, 0.65, 0.85 };
+        public static readonly double[] FogValues = { 0.0013, 0.0045, 0.0065, 0.01, 0.016 };
+        public static readonly string[] FogNames = { "", "Mist", "Fog", "Dense fog", "Thick fog" };
         private const double Margin = 0.03;
 
         private sealed class Pattern
         {
             public string Name;
-            public int Weight;
-            public double Showers, Fronts, Fog, Clouds;
+            public double Showers, Fronts, Fog, Clouds, Wind;
             public bool Shield, Squall, Coast;
         }
 
-        private static readonly string[] PatternKeys = { "fair", "unsettled", "longrain", "coastfog", "storms" };
+        private static readonly string[] PatternKeys = { "fair", "grey", "unsettled", "longrain", "coastfog", "storms" };
 
         private static readonly Dictionary<string, Pattern> Patterns = new Dictionary<string, Pattern>
         {
-            ["fair"] = new Pattern { Name = "Fair weather", Weight = 30, Showers = 0.06, Fronts = 0, Fog = 0.5, Clouds = -0.75 },
-            ["unsettled"] = new Pattern { Name = "Unsettled", Weight = 28, Showers = 0.85, Fronts = 0.14, Fog = 1, Clouds = 0.1 },
-            ["longrain"] = new Pattern { Name = "Prolonged rain", Weight = 14, Showers = 0.35, Fronts = 0, Fog = 1, Clouds = 0.7, Shield = true },
-            ["coastfog"] = new Pattern { Name = "Coastal fog", Weight = 14, Showers = 0.12, Fronts = 0, Fog = 1, Clouds = -0.3, Coast = true },
-            ["storms"] = new Pattern { Name = "Storm front", Weight = 10, Showers = 0.55, Fronts = 0, Fog = 0.3, Clouds = 0.45, Squall = true },
+            ["fair"] = new Pattern { Name = "Fair weather", Showers = 0.05, Fronts = 0, Fog = 1, Clouds = -1.05, Wind = -0.15 },
+            ["grey"] = new Pattern { Name = "Overcast", Showers = 0, Fronts = 0, Fog = 0.6, Clouds = 0.65, Wind = 0 },
+            ["unsettled"] = new Pattern { Name = "Showers", Showers = 0.6, Fronts = 0.05, Fog = 0.4, Clouds = 0.1, Wind = 0.15 },
+            ["longrain"] = new Pattern { Name = "Prolonged rain", Showers = 0.15, Fronts = 0, Fog = 0.5, Clouds = 0.75, Wind = 0.05, Shield = true },
+            ["coastfog"] = new Pattern { Name = "Coastal fog", Showers = 0, Fronts = 0, Fog = 1, Clouds = -0.5, Wind = -0.2, Coast = true },
+            ["storms"] = new Pattern { Name = "Storm front", Showers = 0.35, Fronts = 0, Fog = 0, Clouds = 0.45, Wind = 0.35, Squall = true },
         };
+
+        /// <summary>
+        /// What each pattern can turn into, and how readily, before the season's weighting (rows and columns in
+        /// <see cref="PatternKeys"/> order): fine weather clouds over, fogs up along the coast or a front comes
+        /// through; cloud brings steady rain or clears; rain and fronts leave showers behind; showers clear.
+        /// </summary>
+        private static readonly double[][] Next =
+        {
+            //               fair grey unsettled longrain coastfog storms
+            new double[] {   0,   3,   0.5,      0,       1.5,     1 },   // fair
+            new double[] {   2,   0,   1,        2,       0,       0 },   // grey
+            new double[] {   2,   1,   0,        0,       0,       0.3 }, // unsettled
+            new double[] {   0,   1.5, 2,        0,       0,       0 },   // longrain
+            new double[] {   2,   1,   0,        0,       0,       0 },   // coastfog
+            new double[] {   1.5, 0.5, 2,        0,       0,       0 },   // storms
+        };
+
+        private sealed class Climate
+        {
+            /// <summary>How strongly each pattern is favoured when the weather changes, and how likely each is to last another period.</summary>
+            public double[] Weight, Stay;
+
+            /// <summary>
+            /// How much afternoon heating drives showers (0 none, 1 full summer), how readily fog forms, and how
+            /// much cloudier and windier than the patterns' own levels the season runs.
+            /// </summary>
+            public double Heat, Fog, Clouds, Wind;
+
+            /// <summary>How likely an hour of heavy rain is to be a thunderstorm (St Petersburg's thunder days: summer, a little in spring and early autumn).</summary>
+            public double Thunder;
+        }
+
+        // Modelled on St Petersburg (Pulkovo), at the head of the Gulf of Finland, the real climate nearest the
+        // game's Norvinsk region: clear days are rare all year; summer has the most sun and afternoon
+        // thunderstorms; autumn into winter is grey, wet and foggy, winter snowing on about half its days;
+        // spring is the driest season. Monthly figures from climates.com's St Petersburg guide (blue sky, dry,
+        // snowy, thunder and foggy days) and Wikipedia's Climate of Saint Petersburg (1991-2020 sunshine).
+        // Tuned with docs/radar-prototype.html's model (2026-10-29); measured over 40-minute raids, rain or
+        // snow in summer 20 %, autumn 28 %, late autumn 35 %, winter 34 %, early spring 23 %, spring 17 %.
+        private static readonly Dictionary<string, Climate> Climates = new Dictionary<string, Climate>
+        {
+            //                               fair grey unsettled longrain coastfog storms
+            ["summer"] = new Climate { Weight = new[] { 2.2, 1.3, 1.7, 0.7, 0.6, 2.2 }, Stay = new[] { 0.7, 0.45, 0.3, 0.35, 0.3, 0.05 }, Heat = 1, Fog = 0.5, Clouds = 0.15, Wind = -0.05, Thunder = 0.7 },
+            ["autumn"] = new Climate { Weight = new[] { 1.2, 2.4, 1.2, 1.8, 1.3, 0.4 }, Stay = new[] { 0.6, 0.65, 0.3, 0.5, 0.45, 0.05 }, Heat = 0.2, Fog = 2.1, Clouds = 0.02, Wind = 0.05, Thunder = 0.15 },
+            ["lateautumn"] = new Climate { Weight = new[] { 0.7, 3, 0.8, 2, 0.8, 0.2 }, Stay = new[] { 0.5, 0.75, 0.3, 0.55, 0.4, 0.05 }, Heat = 0, Fog = 2.3, Clouds = 0.12, Wind = 0.08, Thunder = 0 },
+            ["winter"] = new Climate { Weight = new[] { 1, 3, 0.9, 2.4, 0.4, 0.7 }, Stay = new[] { 0.6, 0.72, 0.35, 0.55, 0.3, 0.05 }, Heat = 0, Fog = 1.9, Clouds = 0.02, Wind = 0.05, Thunder = 0 },
+            ["earlyspring"] = new Climate { Weight = new[] { 1.8, 2, 1, 1.5, 1, 0.2 }, Stay = new[] { 0.65, 0.6, 0.3, 0.45, 0.4, 0.05 }, Heat = 0.2, Fog = 1.2, Clouds = 0.1, Wind = 0, Thunder = 0.05 },
+            ["spring"] = new Climate { Weight = new[] { 2, 1.6, 1.3, 0.8, 1.4, 0.5 }, Stay = new[] { 0.7, 0.5, 0.3, 0.4, 0.4, 0.05 }, Heat = 0.6, Fog = 0.9, Clouds = 0.15, Wind = 0, Thunder = 0.4 },
+            // SPT's Storm season is drawn by the game as a blizzard (driven snow), so: wintry, wet, windy, no afternoon showers.
+            ["storm"] = new Climate { Weight = new[] { 0.8, 1.4, 1.8, 1.5, 0.3, 2.5 }, Stay = new[] { 0.55, 0.45, 0.4, 0.45, 0.3, 0.15 }, Heat = 0, Fog = 0.5, Clouds = 0.1, Wind = 0.15, Thunder = 0 },
+        };
+
+        /// <summary>SPT's seasons in its Season enum's order: SUMMER, AUTUMN, WINTER, SPRING, AUTUMN_LATE, SPRING_EARLY, STORM.</summary>
+        private static readonly string[] SeasonClimates = { "summer", "autumn", "winter", "spring", "lateautumn", "earlyspring", "storm" };
+
+        private static Climate CurrentClimate => Climates[_season >= 0 && _season < SeasonClimates.Length ? SeasonClimates[_season] : "summer"];
+
+        /// <summary>
+        /// The pattern chain runs forward period by period from <see cref="ChainFrom"/> (2022 on the Tarkov
+        /// clock), each step drawn from that period's own seeded numbers, so any period always comes out the
+        /// same. Checkpoints every <see cref="Mark"/> periods keep it cheap; a new seed or season starts afresh.
+        /// </summary>
+        private const long ChainFrom = 400000;
+        private const int Mark = 1024;
+        private static readonly List<int> ChainMarks = new List<int>();
 
         private sealed class Kind
         {
@@ -76,6 +147,7 @@ namespace SPTForecaster
         private static readonly Dictionary<long, List<Cell>> CellCache = new Dictionary<long, List<Cell>>();
         private static readonly Dictionary<long, string> PatternCache = new Dictionary<long, string>();
         private static int _seed;
+        private static int _season;
         private static string _forcedPattern;
 
         /// <summary>
@@ -108,6 +180,24 @@ namespace SPTForecaster
                     _seed = value;
                     CellCache.Clear();
                     PatternCache.Clear();
+                    ChainMarks.Clear();
+                }
+            }
+        }
+
+        /// <summary>The server's season (SPT's Season enum); it shapes the weather, so a new one clears everything too.</summary>
+        public static int Season
+        {
+            get => _season;
+            set
+            {
+                lock (Gate)
+                {
+                    if (value == _season) return;
+                    _season = value;
+                    CellCache.Clear();
+                    PatternCache.Clear();
+                    ChainMarks.Clear();
                 }
             }
         }
@@ -151,12 +241,15 @@ namespace SPTForecaster
 
         // ---- wind and patterns -------------------------------------------------------------------
 
-        /// <summary>Direction storms drift (radians, frame axes) and strength 0..1.</summary>
+        /// <summary>
+        /// Direction storms drift (radians, frame axes) and strength 0..1: calmer in fine weather, stronger
+        /// with fronts and showers.
+        /// </summary>
         public static void Wind(double t, out double dir, out double strength)
         {
             var s = (Seed % 997 + 997) % 997 / 997.0 * Math.PI * 2;
             dir = s + 0.9 * Math.Sin(t / 150000 + s);
-            strength = 0.5 + 0.5 * Math.Sin(t / 47000 + s * 1.7);
+            strength = Math.Max(0, Math.Min(1, 0.45 + 0.4 * Math.Sin(t / 47000 + s * 1.7) + PatternBlend(t, p => p.Wind) + CurrentClimate.Wind));
         }
 
         private static string PatternOfPeriod(long p)
@@ -165,20 +258,56 @@ namespace SPTForecaster
             {
                 if (_forcedPattern != null) return _forcedPattern;
                 if (PatternCache.TryGetValue(p, out var key)) return key;
-                var r = new Rng(Mix(Seed ^ 0x5bd1e995, (int)p));
-                var total = 0;
-                foreach (var k in PatternKeys) total += Patterns[k].Weight;
-                var x = r.Next() * total;
-                key = PatternKeys[PatternKeys.Length - 1];
-                foreach (var k in PatternKeys)
+
+                var climate = CurrentClimate;
+                var q = Math.Max(0, p - ChainFrom);
+                var m = (int)(q / Mark);
+                while (ChainMarks.Count <= m)
                 {
-                    x -= Patterns[k].Weight;
-                    if (x < 0) { key = k; break; }
+                    var n = ChainMarks.Count;
+                    if (n == 0)
+                    {
+                        ChainMarks.Add(PickIndex(new Rng(Mix(Seed, 0x2545f491)).Next(), climate.Weight));
+                        continue;
+                    }
+
+                    var c = ChainMarks[n - 1];
+                    for (long i = (long)(n - 1) * Mark; i < (long)n * Mark; i++) c = StepPattern(climate, c, i + ChainFrom);
+                    ChainMarks.Add(c);
                 }
 
+                var k = ChainMarks[m];
+                for (var i = (long)m * Mark; i < q; i++) k = StepPattern(climate, k, i + ChainFrom);
+
+                if (PatternCache.Count > 4000) PatternCache.Clear();
+                key = PatternKeys[k];
                 PatternCache[p] = key;
                 return key;
             }
+        }
+
+        /// <summary>The next period's pattern: the same again (the season's stay odds), or one of what it can turn into.</summary>
+        private static int StepPattern(Climate climate, int k, long p)
+        {
+            var r = new Rng(Mix(Seed ^ 0x5bd1e995, (int)p));
+            if (r.Next() < climate.Stay[k]) return k;
+            var weights = new double[PatternKeys.Length];
+            for (var n = 0; n < weights.Length; n++) weights[n] = Next[k][n] * climate.Weight[n];
+            return PickIndex(r.Next(), weights);
+        }
+
+        private static int PickIndex(double x, double[] weights)
+        {
+            var total = 0.0;
+            foreach (var w in weights) total += w;
+            x *= total;
+            for (var i = 0; i < weights.Length; i++)
+            {
+                x -= weights[i];
+                if (x < 0) return i;
+            }
+
+            return weights.Length - 1;
         }
 
         /// <summary>The weather pattern at t, and when it ends (runs of the same pattern merged).</summary>
@@ -192,12 +321,25 @@ namespace SPTForecaster
             return Patterns[key].Name;
         }
 
-        private static double PatternClouds(double t)
+        /// <summary>A pattern's value (cloud, wind) eased from the last pattern's to this one's over the period's first hour.</summary>
+        private static double PatternBlend(double t, Func<Pattern, double> value)
         {
             var p = (long)Math.Floor(t / PeriodSeconds);
-            var cur = Patterns[PatternOfPeriod(p)].Clouds;
-            var prev = Patterns[PatternOfPeriod(p - 1)].Clouds;
+            var cur = value(Patterns[PatternOfPeriod(p)]);
+            var prev = value(Patterns[PatternOfPeriod(p - 1)]);
             return prev + (cur - prev) * Smoothstep(0, 3600, t - p * PeriodSeconds);
+        }
+
+        private static double PatternClouds(double t) => PatternBlend(t, p => p.Clouds) + CurrentClimate.Clouds;
+
+        /// <summary>
+        /// How much the hour drives showers: with the season's heating, mostly in the afternoon and rarely at
+        /// night; without it, the same all day. About 1 averaged over a day either way.
+        /// </summary>
+        private static double ShowerHour(int hourOfDay, double heat)
+        {
+            var d = (hourOfDay + 0.5 - 15) / 3.2;
+            return 1 - heat + heat * (0.25 + 2.6 * Math.Exp(-d * d));
         }
 
         // ---- storms ----------------------------------------------------------------------------
@@ -256,15 +398,24 @@ namespace SPTForecaster
             var outList = new List<Cell>();
             var hourOfDay = (int)(((h % 24) + 24) % 24);
             var t0 = h * 3600.0;
-            var pat = Patterns[PatternOfPeriod((long)Math.Floor((t0 + 1800) / PeriodSeconds))];
+            var period = (long)Math.Floor((t0 + 1800) / PeriodSeconds);
+            var pat = Patterns[PatternOfPeriod(period)];
+            var climate = CurrentClimate;
             var periodStart = h * 3600 % PeriodSeconds == 0;
-            if (r.Next() < pat.Showers) outList.Add(MakeCell(r, t0, "shower", false));
-            if (r.Next() < pat.Showers * 0.4) outList.Add(MakeCell(r, t0, "shower", false));
+            var showers = pat.Showers * ShowerHour(hourOfDay, climate.Heat);
+            if (r.Next() < showers) outList.Add(MakeCell(r, t0, "shower", false));
+            if (r.Next() < showers * 0.4) outList.Add(MakeCell(r, t0, "shower", false));
             if (r.Next() < pat.Fronts) outList.Add(MakeCell(r, t0, "front", false));
             if (periodStart && pat.Shield) outList.Add(MakeCell(r, t0, "shield", true));
             if (periodStart && pat.Squall) outList.Add(MakeCell(r, t0, "squall", true));
             if (periodStart && pat.Coast) outList.Add(MakeCell(r, t0, "coastfog", true));
-            if (r.Next() < (hourOfDay >= 1 && hourOfDay <= 8 ? 0.3 : 0.05) * pat.Fog) outList.Add(MakeCell(r, t0, "fog", false));
+            // Fog forms on calm nights, more readily when the ground is still wet from rain, and not in a wind.
+            var prev = PatternOfPeriod((long)Math.Floor(t0 / PeriodSeconds) - 1);
+            var wet = prev == "longrain" || prev == "unsettled" || prev == "storms" ? 1.6 : 1;
+            Wind(t0, out _, out var strength);
+            var calm = 1 - Smoothstep(0.35, 0.7, strength);
+            var fogChance = (hourOfDay >= 1 && hourOfDay <= 8 ? 0.3 : 0.04) * pat.Fog * climate.Fog * wet * calm;
+            if (r.Next() < fogChance) outList.Add(MakeCell(r, t0, "fog", false));
 
             lock (Gate)
             {
@@ -434,15 +585,21 @@ namespace SPTForecaster
                 var clouds = SkyClouds(x, t, rain, rl > 0);
                 if (t + Step <= from) continue; // warm-up samples only seed the hysteresis
 
+                var windSpeed = Math.Min(4, Math.Round(strength * 3 + (rain > 0.5 ? 1 : 0)));
+                var rainLevel = rl.Value > 0 ? rl.Value + 1 : 1;
                 result.Add(new Block
                 {
                     Start = t,
                     End = t + Step,
                     Clouds = Math.Round(clouds, 2),
-                    Rain = rl.Value > 0 ? rl.Value + 1 : 1,
+                    Rain = rainLevel,
                     RainIntensity = Math.Round(rain, 2),
                     Fog = FogValues[fl.Value],
-                    WindSpeed = Math.Min(4, Math.Round(strength * 3 + (rain > 0.5 ? 1 : 0))),
+                    FogLevel = fl.Value,
+                    // A blizzard: snow (not just light snow) in a strong wind; the game drives the Storm season's snow anyway.
+                    Blizzard = Schedule.Winter && rainLevel >= 3 && (windSpeed >= 3 || _season == 6),
+                    Thunder = !Schedule.Winter && rainLevel >= 3 && Electric(t),
+                    WindSpeed = windSpeed,
                     WindDirection = DirectionIndex(dir),
                     WindGustiness = Math.Round(strength, 2),
                     Temperature = Schedule.Winter ? (Schedule.IsNight(t) ? -9 : -3) : (Schedule.IsNight(t) ? 9 : 17),
@@ -451,6 +608,46 @@ namespace SPTForecaster
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// How far (frame units, 600 across the region) the nearest thunderstorm is from (x, y) at t: rain (not
+        /// light rain, not snow) in an electric hour, looked for on rings out to <see cref="ThunderReach"/>.
+        /// Null when there is none in reach. 0 when it is overhead.
+        /// </summary>
+        public static double? ThunderDistance(double x, double y, double t)
+        {
+            if (Schedule.Winter || !Electric(t)) return null;
+            var cells = ActiveCells(t);
+            At(cells, x, y, t, out var here, out _);
+            if (here >= RainSteps[1]) return 0;
+            foreach (var r in ThunderRings)
+            {
+                for (var k = 0; k < 8; k++)
+                {
+                    var a = k * Math.PI / 4;
+                    At(cells, x + r * Math.Cos(a), y + r * Math.Sin(a), t, out var rain, out _);
+                    if (rain >= RainSteps[1]) return r;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Rings searched for thunderstorms, frame units; one unit is taken as 40 m, so the last is 10 km.</summary>
+        private static readonly double[] ThunderRings = { 15, 30, 50, 75, 105, 140, 185, 250 };
+
+        public const double ThunderReach = 250, MetresPerUnit = 40;
+
+        /// <summary>
+        /// Whether heavy rain in the hour of <paramref name="t"/> is a thunderstorm: the season's thunder odds, three
+        /// times as high in a storm front, drawn per hour from the seed so everyone sees the same storms.
+        /// </summary>
+        private static bool Electric(double t)
+        {
+            var climate = CurrentClimate;
+            var odds = PatternOfPeriod((long)Math.Floor(t / PeriodSeconds)) == "storms" ? Math.Min(1, climate.Thunder * 3) : climate.Thunder;
+            return new Rng(Mix(Seed ^ 0x27d4eb2d, (int)Math.Floor(t / 3600))).Next() < odds;
         }
 
         /// <summary>The game's wind direction index (WeatherNode.WindDirections 1..8) closest to an angle.</summary>

@@ -9,7 +9,7 @@
     <Nullable>disable</Nullable>
 
     <!-- Must match ForecasterPlugin.PluginVersion. -->
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
 
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -46,9 +46,18 @@
     <Reference Include="UnityEngine.UI"><HintPath>$(GameManaged)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UIModule"><HintPath>$(GameManaged)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(GameManaged)\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.ImageConversionModule"><HintPath>$(GameManaged)\UnityEngine.ImageConversionModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AudioModule"><HintPath>$(GameManaged)\UnityEngine.AudioModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UnityWebRequestModule"><HintPath>$(GameManaged)\UnityEngine.UnityWebRequestModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule"><HintPath>$(GameManaged)\UnityEngine.UnityWebRequestAudioModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Sirenix.Serialization"><HintPath>$(GameManaged)\Sirenix.Serialization.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="spt-common"><HintPath>$(SptPluginsPath)\spt-common.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="spt-reflection"><HintPath>$(SptPluginsPath)\spt-reflection.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Our own weather glyphs (drawn by tools/glyphs.py), loaded by Glyphs.cs as SPTForecaster.Glyphs.<Name>.png. -->
+    <EmbeddedResource Include="Glyphs\*.png" LogicalName="SPTForecaster.Glyphs.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

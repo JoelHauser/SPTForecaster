@@ -31,6 +31,7 @@ namespace SPTForecaster
                 // falls back to the remembered slot at the current time.
                 RadarLayer.TargetTime = null;
                 RadarLayer.Attach(__instance._locationButtonsContainer, __instance._locationPathsContainer);
+                RadarKey.Attach(__instance._locationButtonsContainer?.parent?.Find("SPTForecasterRadar"), __instance);
 
                 // The game selects the last map before it shows the screen, so the forecast was first set up
                 // while the screen was hidden: the toggles read as inactive (always the left slot) and the bar's
@@ -276,6 +277,9 @@ namespace SPTForecaster
     /// </summary>
     internal sealed class SetWeatherNodesPatch : ModulePatch
     {
+        /// <summary>Tarkov seconds of weather beyond the raid either way, for a mod moving the raid clock (24 h).</summary>
+        private const double DayMargin = 24 * 3600;
+
         /// <summary>The shortest blend between blocks, in real seconds.</summary>
         private const double MinBlendRealSeconds = 120;
 
@@ -335,21 +339,32 @@ namespace SPTForecaster
                 var locked = ForecasterPlugin.LockOnConfirm.Value && WeatherLock.TryGet(location, rightSlot, out start);
                 if (!locked) start = rightSlot ? now + Schedule.HalfDaySeconds : now;
 
-                // This map's weather: the field read at its button, three Tarkov hours either side of the raid
-                // and sixteen after its start (over two real hours of raid).
-                var blocks = Field.Blocks(x, y, start - 3 * 3600, start + 16 * 3600);
+                // This map's weather: the field read at its button, from three Tarkov hours before the raid to
+                // well past its end. Raid times differ between servers, so the span is this server's raid time
+                // for the map with half again and half an hour to spare (a mod may lengthen a raid), and never
+                // under sixteen Tarkov hours; past the last node the game would run the weather backwards.
+                var raidMinutes = Maps.RaidMinutes(location);
+                var after = Math.Max(16 * 3600, (raidMinutes > 0 ? raidMinutes * 1.5 + 30 : 400) * 60 * Schedule.Acceleration);
+                // A day either side as well: TimeWeatherChanger (and the like) can move the raid clock up to
+                // 23 h either way, and the clock must still land on this map's weather, not off the curve.
+                var before = DayMargin;
+                after += DayMargin;
+                var blocks = Field.Blocks(x, y, start - before, start + after);
                 var blendReal = BlendRealSeconds();
                 SmoothClouds(blocks, blendReal);
-                var built = Build(blocks, start, raidClock.Ticks, blendReal * Schedule.Acceleration);
+                ThickenFog(blocks, ForecasterPlugin.FogThickness.Value);
+                var built = Build(blocks, start, start - before, start + after, raidClock.Ticks, blendReal * Schedule.Acceleration);
                 if (built.Length < 2) return;
                 nodes = built;
+                BlizzardDriver.Set(blocks, start, raidClock.Ticks);
+                Thunder.Set(blocks, start, raidClock.Ticks, x, y, raidMinutes);
 
                 if (ForecasterPlugin.VerboseLog.Value)
                 {
                     var first = blocks.Find(b => b.Start <= start && b.End > start);
-                    var forecast = Forecast.Build(blocks, start, 60);
+                    var forecast = Forecast.Build(blocks, start, raidMinutes > 0 ? raidMinutes : 60);
                     ForecasterPlugin.Log.LogInfo(
-                        $"Raid weather for {location}: {built.Length} nodes from Tarkov {Maps.Clock(start)} ({(locked ? "locked at confirm" : "not locked, from now")}), raid clock {raidClock:HH:mm:ss}, changes blend over {blendReal:0} s. " +
+                        $"Raid weather for {location}: {built.Length} nodes from Tarkov {Maps.Clock(start)}, covering {(after - DayMargin) / 60 / Schedule.Acceleration:0} raid min (+ a Tarkov day either way) (server raid time {(raidMinutes > 0 ? raidMinutes + " min" : "unknown")}) ({(locked ? "locked at confirm" : "not locked, from now")}), raid clock {raidClock:HH:mm:ss}, changes blend over {blendReal:0} s. " +
                         (first != null ? $"Opening block clouds {first.Clouds:0.##} rain {first.Rain:0} @ {first.RainIntensity:0.##} fog {first.Fog:0.####} wind {first.WindSpeed:0}. " : "") +
                         $"Forecast for this start: {forecast.Summary}.");
                 }
@@ -357,6 +372,20 @@ namespace SPTForecaster
             catch (Exception ex)
             {
                 ForecasterPlugin.Log.LogError("Could not apply the forecast weather; the raid keeps SPT's: " + ex);
+            }
+        }
+
+        /// <summary>
+        /// The "Fog thickness" setting: scales each fog above the clear-air baseline (Field.FogValues[0]), so
+        /// how thick mist through thick fog look can be tuned in game. The words are unchanged.
+        /// </summary>
+        internal static void ThickenFog(List<Block> blocks, double scale)
+        {
+            if (Math.Abs(scale - 1) < 0.001) return;
+            var clear = Field.FogValues[0];
+            foreach (var b in blocks)
+            {
+                if (b.FogLevel > 0) b.Fog = clear + (b.Fog - clear) * scale;
             }
         }
 
@@ -379,10 +408,8 @@ namespace SPTForecaster
             }
         }
 
-        private static WeatherNode[] Build(List<Block> blocks, double start, long raidTicks, double blendSeconds)
+        private static WeatherNode[] Build(List<Block> blocks, double start, double from, double to, long raidTicks, double blendSeconds)
         {
-            var from = start - 3 * 3600;
-            var to = start + 16 * 3600;
             var list = new List<WeatherNode>();
             long last = long.MinValue;
 
@@ -406,6 +433,28 @@ namespace SPTForecaster
             if (ticks <= last) return;
             last = ticks;
             list.Add(Forecast.ToNode(b, ticks));
+        }
+    }
+
+    /// <summary>
+    /// The lightning flash: TOD_Sky sets its sun/moon light every frame in LateUpdate; after it, add the flash
+    /// (Thunder.Flash) and, while it lasts, full shadow strength, so walls block it completely (at night the
+    /// moonlight's shadows are weak, which would let a flash glow through them). Windows and doorways let it in
+    /// as they let in daylight. TOD resets both next frame.
+    /// </summary>
+    internal sealed class ThunderLightPatch : ModulePatch
+    {
+        protected override MethodBase GetTargetMethod() => AccessTools.Method(typeof(TOD_Sky), nameof(TOD_Sky.LateUpdate));
+
+        [PatchPostfix]
+        private static void Postfix(TOD_Sky __instance)
+        {
+            var flash = Thunder.Flash;
+            if (flash <= 0.001f) return;
+            var light = __instance.Components != null ? __instance.Components.LightSource : null;
+            if (light == null) return;
+            light.intensity += flash;
+            light.shadowStrength = 1f;
         }
     }
 }

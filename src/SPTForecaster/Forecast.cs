@@ -11,6 +11,9 @@ namespace SPTForecaster
         /// <summary>The game's own icon for the line, or None for no icon.</summary>
         public EWeatherType Icon = EWeatherType.None;
 
+        /// <summary>One of our glyphs (<see cref="Glyphs"/>) for weather the game has no icon for; wins over Icon.</summary>
+        public string Glyph;
+
         public bool Faint;
     }
 
@@ -57,9 +60,13 @@ namespace SPTForecaster
             public int Level;
             public bool Wet;
             public bool Foggy;
+            public int FogLevel;
+            public bool Blizzard;
+            public bool Thunder;
             public bool ClearSky;
             public string Wind;
             public EWeatherType Icon;
+            public string Glyph;
         }
 
         private sealed class Segment
@@ -74,16 +81,20 @@ namespace SPTForecaster
             var r = new Reading();
             var sky = b.Clouds <= -0.8 ? "Clear" : b.Clouds <= 0.4 ? "Partly cloudy" : b.Clouds < 1.1 ? "Overcast" : "Stormy skies";
             r.ClearSky = b.Clouds <= 0.4;
-            r.Foggy = b.Fog >= 0.004;
-            var fog = b.Fog >= 0.006 ? "Dense fog" : "Fog";
+            r.FogLevel = b.FogLevel;
+            r.Foggy = b.FogLevel > 0;
+            var fog = Field.FogNames[b.FogLevel];
             var level = (int)Math.Round(b.Rain);
             r.Level = level;
+            r.Blizzard = b.Blizzard;
+            r.Thunder = b.Thunder && level >= 2;
 
             if (level >= 2)
             {
                 r.Wet = true;
-                r.Label = Schedule.Winter
-                    ? (level == 2 ? "Light snow" : level == 3 ? "Snow" : "Heavy snow")
+                r.Label = b.Blizzard ? "Blizzard"
+                    : r.Thunder ? "Thunderstorm"
+                    : Schedule.Winter ? (level == 2 ? "Light snow" : level == 3 ? "Snow" : "Heavy snow")
                     : (level == 2 ? "Light rain" : level == 3 ? "Rain" : "Heavy rain");
                 if (r.Foggy) r.Label += " and " + ForecastResult.Lower(fog);
             }
@@ -94,7 +105,27 @@ namespace SPTForecaster
 
             r.Wind = b.WindSpeed <= 1 ? "Calm" : b.WindSpeed < 3 ? "Breezy" : "Strong wind";
             r.Icon = Icon(b, night);
+            r.Glyph = Glyph(b, r, night);
             return r;
+        }
+
+        /// <summary>
+        /// Our own glyph where the game has no icon: snow and blizzard (the game only has rain icons), each fog
+        /// strength (the game has one fog icon), and night skies (the game names night icons it doesn't ship).
+        /// Null where the game's own icon says it.
+        /// </summary>
+        private static string Glyph(Block b, Reading r, bool night)
+        {
+            if (r.Blizzard) return "Blizzard";
+            if (r.Wet && Schedule.Winter) return r.Level == 2 ? "LightSnow" : r.Level == 3 ? "Snow" : "HeavySnow";
+            if (!r.Wet && r.Foggy) return r.FogLevel == 1 ? "Mist" : r.FogLevel == 2 ? null : r.FogLevel == 3 ? "DenseFog" : "ThickFog";
+            switch (r.Icon)
+            {
+                case EWeatherType.ClearNight: return "ClearNight";
+                case EWeatherType.PartlyCloudNight: return "PartlyCloudNight";
+                case EWeatherType.ClearFogNight: return "ClearFogNight";
+                default: return null;
+            }
         }
 
         /// <summary>The game's own classification, so the icon is exactly the one vanilla would show for this weather.</summary>
@@ -103,6 +134,10 @@ namespace SPTForecaster
             var node = ToNode(b, 0);
             // The game's rule calls rain 1-3 "light rain"; a block the words call dry must not get a rain icon.
             if (b.Rain < 2) node.Rain = 0;
+            // A thunderstorm is the game's thunder cloud (the one icon of its with lightning).
+            if (b.Thunder && b.Rain >= 2) return EWeatherType.ThunderCloud;
+            // Plain fog (no rain) is the game's fog icon; mist, dense and thick fog get glyphs of their own.
+            if (b.Rain < 2 && b.FogLevel == 2) return EWeatherType.Fog;
             var type = node.GetWeatherTypeByNode();
             if (!night) return type;
             switch (type)
@@ -179,15 +214,15 @@ namespace SPTForecaster
 
             if (steps.Count == 1)
             {
-                result.Headline = new ForecastLine { Text = first.Label + " all raid", Icon = first.Icon };
+                result.Headline = new ForecastLine { Text = first.Label + " all raid", Icon = first.Icon, Glyph = first.Glyph };
                 return result;
             }
 
-            result.Headline = new ForecastLine { Text = first.Label, Icon = first.Icon };
+            result.Headline = new ForecastLine { Text = first.Label, Icon = first.Icon, Glyph = first.Glyph };
             for (var k = 1; k < steps.Count && k <= 2; k++)
             {
                 var phrase = Change(steps[k - 1].Reading, steps[k].Reading, steps[k].FromMinute);
-                result.Changes.Add(new ForecastLine { Text = char.ToUpperInvariant(phrase[0]) + phrase.Substring(1), Icon = steps[k].Reading.Icon });
+                result.Changes.Add(new ForecastLine { Text = char.ToUpperInvariant(phrase[0]) + phrase.Substring(1), Icon = steps[k].Reading.Icon, Glyph = steps[k].Reading.Glyph });
             }
 
             if (steps.Count > 3)
@@ -206,12 +241,16 @@ namespace SPTForecaster
             var when = minute < 2.5 ? "within minutes" : "in ~" + Round5(minute) + " min";
             var falling = Schedule.Winter ? "Snow" : "Rain";
 
+            if (cur.Blizzard && !prev.Blizzard) return (prev.Wet ? "Blizzard blowing up " : "Blizzard arriving ") + when;
+            if (prev.Blizzard && !cur.Blizzard) return (cur.Wet ? "Blizzard easing " : "Snow stopping ") + when;
+            if (cur.Thunder && !prev.Thunder) return (prev.Wet ? "Thunder starting " : "Thunderstorm arriving ") + when;
+            if (prev.Thunder && !cur.Thunder) return (cur.Wet ? "Thunder passing " : "Rain stopping ") + when;
             if (cur.Wet && !prev.Wet) return cur.Label + " starting " + when;
             if (prev.Wet && !cur.Wet) return falling + " stopping " + when;
             if (cur.Wet && cur.Level != prev.Level) return falling + (cur.Level > prev.Level ? " getting heavier " : " easing ") + when;
-            if (cur.Foggy && !prev.Foggy) return "Fog arriving " + when;
-            if (prev.Foggy && !cur.Foggy) return "Fog lifting " + when;
-            if (cur.Foggy && prev.Foggy) return (cur.Label.StartsWith("Dense") || cur.Label.EndsWith("dense fog") ? "Fog thickening " : "Fog thinning ") + when;
+            if (cur.Foggy && !prev.Foggy) return Field.FogNames[cur.FogLevel] + (cur.FogLevel == 1 ? " forming " : " rolling in ") + when;
+            if (prev.Foggy && !cur.Foggy) return (prev.FogLevel == 1 ? "Mist clearing " : "Fog lifting ") + when;
+            if (cur.Foggy && prev.Foggy && cur.FogLevel != prev.FogLevel) return (cur.FogLevel > prev.FogLevel ? "Fog thickening " : "Fog thinning ") + when;
             switch (cur.Label)
             {
                 case "Clear": return "Skies clearing " + when;
