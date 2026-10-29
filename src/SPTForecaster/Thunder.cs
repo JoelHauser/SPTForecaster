@@ -102,7 +102,21 @@ namespace SPTForecaster
         {
             Spans.Clear();
             Flash = 0;
-            if (!ForecasterPlugin.Lightning.Value) return;
+            // The component goes on every raid (it does nothing without a storm), so the debug strikes always work.
+            if (ForecasterPlugin.Lightning.Value) AddSpans(blocks, start, raidTicks, x, y, raidMinutes);
+
+            var weather = WeatherController.Instance;
+            if (weather == null) return;
+            if (weather.GetComponent<Thunder>() == null) weather.gameObject.AddComponent<Thunder>();
+            LightningFlash.Hook();
+            if (ForecasterPlugin.VerboseLog.Value)
+            {
+                ForecasterPlugin.Log.LogInfo($"Thunder: storms within earshot in {Spans.Count} of this raid's weather blocks.");
+            }
+        }
+
+        private static void AddSpans(List<Block> blocks, double start, long raidTicks, double x, double y, int raidMinutes)
+        {
             // The raid and an hour either side; further out only matters if a mod moves the clock that far.
             var from = start - 3600;
             var to = start + (raidMinutes > 0 ? raidMinutes : 60) * 60 * Schedule.Acceleration + 3600;
@@ -118,23 +132,44 @@ namespace SPTForecaster
                     d.Value,
                 });
             }
-
-            var weather = WeatherController.Instance;
-            if (weather == null) return;
-            if (weather.GetComponent<Thunder>() == null) weather.gameObject.AddComponent<Thunder>();
-            LightningFlash.Hook();
-            if (ForecasterPlugin.VerboseLog.Value)
-            {
-                ForecasterPlugin.Log.LogInfo($"Thunder: storms within earshot in {Spans.Count} of this raid's weather blocks.");
-            }
         }
+
+        // ---- debug: strikes on demand (config section Debug) ----------------------------------------
+
+        internal enum DebugKind { None, Strike, FlashOnly, ThunderOnly }
+
+        private static DebugKind _request;
+        private static Thunder _instance;
+
+        /// <summary>Asks for one strike at the debug distance on the next frame (in raid only).</summary>
+        public static void Request(DebugKind kind)
+        {
+            if (_instance == null)
+            {
+                // Maps without a forecast (Factory, Labs) or raids without our weather never got the component.
+                var weather = WeatherController.Instance;
+                if (weather == null || Singleton<GameWorld>.Instance == null)
+                {
+                    ForecasterPlugin.Log.LogInfo("Debug lightning works in raid only.");
+                    return;
+                }
+
+                weather.gameObject.AddComponent<Thunder>();
+                LightningFlash.Hook();
+            }
+
+            _request = kind;
+        }
+
+        private void Awake() => _instance = this;
 
         private void Update()
         {
             try
             {
                 Flash = FlashNow(Time.unscaledTime);
-                if (!ForecasterPlugin.Lightning.Value) return;
+                DebugStrikes();
+                if (!ForecasterPlugin.Lightning.Value && ForecasterPlugin.ForceStorm.Value == ForecasterPlugin.StormDebug.Off) return;
                 var now = Time.unscaledTime;
                 if (now < _nextCheck) return;
                 _nextCheck = now + 0.5f;
@@ -159,6 +194,13 @@ namespace SPTForecaster
         private static double? StormDistance(out float strength)
         {
             strength = 1f;
+            switch (ForecasterPlugin.ForceStorm.Value)
+            {
+                case ForecasterPlugin.StormDebug.Overhead: return 0;
+                case ForecasterPlugin.StormDebug.Near3Km: return 3000.0 / Field.MetresPerUnit;
+                case ForecasterPlugin.StormDebug.Far8Km: return 8000.0 / Field.MetresPerUnit;
+            }
+
             var weather = WeatherController.Instance;
             if (weather != null && weather.WeatherDebug != null && weather.WeatherDebug.Enabled)
             {
@@ -185,6 +227,26 @@ namespace SPTForecaster
                 ? Random.Range(250f, 3000f)
                 : Mathf.Max(400f, (float)(units * Field.MetresPerUnit) + Random.Range(-1500f, 1500f));
 
+            StrikeAt(metres, true, true);
+        }
+
+        private void DebugStrikes()
+        {
+            var kind = _request;
+            _request = DebugKind.None;
+            if (kind == DebugKind.None && ForecasterPlugin.StrikeKey.Value.IsDown()) kind = DebugKind.Strike;
+            if (kind == DebugKind.None) return;
+
+            float metres = ForecasterPlugin.StrikeDistance.Value;
+            ForecasterPlugin.Log.LogInfo($"Debug lightning: {kind} at {metres:0} m (thunder after {metres / SpeedOfSound:0.0} s).");
+            StrikeAt(metres, kind != DebugKind.ThunderOnly, kind != DebugKind.FlashOnly);
+        }
+
+        private void StrikeAt(float metres, bool flash, bool sound)
+        {
+            if (sound) StartCoroutine(Rumble(metres, flash ? metres / SpeedOfSound : 0f));
+            if (!flash) return;
+
             // The flash: a few flickers, 1 close by, half at 1.8 km, faint far off.
             var power = 1f / (1f + (metres / 1800f) * (metres / 1800f));
             var t = Time.unscaledTime;
@@ -195,8 +257,6 @@ namespace SPTForecaster
                 _pulses.Add(new[] { t, length, power * Random.Range(0.5f, 1f) * (i == 0 ? 1f : 0.8f) });
                 t += length + Random.Range(0.03f, 0.14f);
             }
-
-            StartCoroutine(Rumble(metres, metres / SpeedOfSound));
         }
 
         private float FlashNow(float now)
@@ -285,6 +345,7 @@ namespace SPTForecaster
 
         private void OnDestroy()
         {
+            if (_instance == this) _instance = null;
             Flash = 0;
             LightningFlash.Unhook();
         }

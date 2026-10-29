@@ -26,6 +26,10 @@ namespace SPTForecaster
         internal static ConfigEntry<bool> VerboseLog;
         internal static ConfigEntry<WeatherPattern> ForcePattern;
         internal static ConfigEntry<int> PreviewHours;
+        internal static ConfigEntry<StormDebug> ForceStorm;
+        internal static ConfigEntry<int> StrikeDistance;
+        internal static ConfigEntry<KeyboardShortcut> StrikeKey;
+        internal static ConfigEntry<bool> StrikeNow, FlashNow, ThunderNow;
 
         private void Awake()
         {
@@ -64,6 +68,19 @@ namespace SPTForecaster
             PreviewHours = Config.Bind("Debug", "Preview hours ahead", 0,
                 new ConfigDescription("Show the location screen's radar and forecast this many in-game hours ahead, to watch weather develop. Raids keep the real time.",
                     new AcceptableValueRange<int>(0, 48)));
+
+            ForceStorm = Config.Bind("Debug", "Force thunderstorm", StormDebug.Off,
+                "In raid, lightning and thunder as if a storm were overhead or this far off, whatever the forecast says (the rain and sky stay the forecast's). Works with Lightning and thunder off.");
+            StrikeDistance = Config.Bind("Debug", "Debug strike distance (m)", 1000,
+                new ConfigDescription("How far away the strikes below land: sets the flash's brightness, the thunder's delay (about 3 s per km), loudness and dullness, and near or far recordings (under 2.2 km is near).",
+                    new AcceptableValueRange<int>(100, 12000)));
+            StrikeNow = Config.Bind("Debug", "Strike lightning now", false, "Tick in raid: one strike at the debug distance, flash and thunder.");
+            FlashNow = Config.Bind("Debug", "Flash only now", false, "Tick in raid: one lightning flash at the debug distance, no thunder.");
+            ThunderNow = Config.Bind("Debug", "Thunder only now", false, "Tick in raid: thunder from the debug distance, played at once, no flash.");
+            StrikeKey = Config.Bind("Debug", "Strike lightning key", KeyboardShortcut.Empty, "Key that strikes lightning at the debug distance in raid, flash and thunder.");
+            Button(StrikeNow, Thunder.DebugKind.Strike);
+            Button(FlashNow, Thunder.DebugKind.FlashOnly);
+            Button(ThunderNow, Thunder.DebugKind.ThunderOnly);
 
             ShowForecast.SettingChanged += (_, __) => ForecastPanel.RefreshAll();
             ApplyForcedPattern();
@@ -116,6 +133,27 @@ namespace SPTForecaster
                 case WeatherPattern.Overcast: Field.ForcedPattern = "grey"; break;
                 default: Field.ForcedPattern = null; break;
             }
+        }
+
+        /// <summary>A tick box that acts as a button: ticking asks for the strike and unticks it.</summary>
+        private static void Button(ConfigEntry<bool> entry, Thunder.DebugKind kind)
+        {
+            entry.Value = false;
+            entry.SettingChanged += (_, __) =>
+            {
+                if (!entry.Value) return;
+                entry.Value = false;
+                Thunder.Request(kind);
+            };
+        }
+
+        /// <summary>The debug choices for <see cref="ForceStorm"/>.</summary>
+        internal enum StormDebug
+        {
+            Off,
+            Overhead,
+            Near3Km,
+            Far8Km,
         }
 
         internal static void Enable(SPT.Reflection.Patching.ModulePatch patch)

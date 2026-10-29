@@ -16,7 +16,7 @@ Both halves are needed. Settings (F12):
 - **Forecast:** show the forecast, make raid weather follow it, lock the weather when you confirm a slot, fog thickness (how thick fog looks in raid; the words don't change).
 - **Radar:** show the radar, radar opacity, show the radar key, play the raid on the radar.
 - **Storms:** lightning and thunder on or off, lightning brightness, thunder volume.
-- **Debug:** log the forecast and the applied raid weather; force one weather pattern everywhere (radar, forecast and raid); preview the location screen up to 48 in-game hours ahead.
+- **Debug:** log the forecast and the applied raid weather; force one weather pattern everywhere (radar, forecast and raid); preview the location screen up to 48 in-game hours ahead; force a thunderstorm in raid (overhead, 3 km or 8 km off); strike lightning, a flash only or thunder only on demand (tick box or a key) at a set distance.
 
 **Works with:**
 - [Deploy Screen Overhaul](https://github.com/JoelHauser/LoadingRaid) (releases after 1.1.0): it lights your PMC for the weather the forecast gives the raid. The forecast box stays on the location screen and never appears on the confirm screen.

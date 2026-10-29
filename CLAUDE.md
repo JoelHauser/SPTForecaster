@@ -208,6 +208,12 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
   from recording, so the older left choice was "restored". Factory now records and restores like any map
   with the toggles (only Labs, one-slot and non-AvailableMaps maps are excluded). Confirmed fixed in game
   by Joel 2026-10-27.
+- **Debug lightning** (0.2.1): `Force thunderstorm` (Off/Overhead/Near3Km/Far8Km) overrides `Thunder.StormDistance`
+  (rain and sky stay the forecast's; works with Lightning off). `Strike lightning now` / `Flash only now` /
+  `Thunder only now` (tick boxes that untick themselves, `ForecasterPlugin.Button`) and `Strike lightning key`
+  strike once at `Debug strike distance (m)` (100-12000) via `Thunder.Request` -> `StrikeAt`; thunder only plays
+  at once. On maps without our weather (Factory, Labs) the request adds the Thunder component itself; Force
+  thunderstorm needs a strike request there first. Log line `Debug lightning: ...`.
 - **Debug settings:** `Force weather pattern` sets `Field.ForcedPattern` (every period returns that key, cell
   cache cleared; radar, forecast and raid all follow). `Preview hours ahead` (0-48) adds to `now` in
   `ForecastPanel.Refresh` only, so the location screen's radar and box move ahead; raids keep real time
@@ -312,7 +318,8 @@ touches button colours.
     flash lights the sky and the outdoors (night: bright but not daylight; noon: faint), shows through
     windows but not in closed rooms, no hard moon-angle shadows, light falls back to normal after each
     flash; clouds flash (with and without CloudSix; log `Lightning lights CloudSix's clouds.`); tune with
-    `Storms / Lightning brightness`. Thunder after the flash, quieter far off.
+    `Storms / Lightning brightness`. Thunder after the flash, quieter far off. Debug: `Force thunderstorm`,
+    `Strike lightning now` / `Flash only now` / `Thunder only now` at 300 m, 1.5 km, 5 km, 10 km.
     Log `Thunder plays through mixer group '...'`. Reserve bunker: silent. Shoreline resort basement: muffled.
 15. TimeWeatherChanger: its weather overrides ours and hands back; moving the time keeps the weather sane;
     its thunder slider makes lightning.
