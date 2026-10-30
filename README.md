@@ -42,4 +42,4 @@ Fika co-op is untested.
 
 ## Credits
 
-Thunder sounds are real recordings from Wikimedia Commons under CC BY / CC BY-SA. See [THUNDER_CREDITS.md](THUNDER_CREDITS.md).
+Thunder sounds are real recordings from Wikimedia Commons under CC BY / CC BY-SA or in the public domain. See [THUNDER_CREDITS.md](THUNDER_CREDITS.md).

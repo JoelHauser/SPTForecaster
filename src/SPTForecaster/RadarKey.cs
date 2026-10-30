@@ -18,7 +18,8 @@ namespace SPTForecaster
     /// Only weather the game has; the colours come from RadarRenderer, so the key can't drift from the radar.
     ///
     /// While the radar plays a raid through (RadarLayer.PlayProgress), a readout as wide as the key sits
-    /// just above it ("RAID +25 MIN" over a thin progress bar), and a faint ring marks the selected map.
+    /// just above it ("RAID +25 MIN" over a thin progress bar). It used to ring the selected map too, but
+    /// the ring sat beside the map's name plate, not around it, and looked out of place (Joel, 2026-10-29).
     /// </summary>
     internal sealed class RadarKey : MonoBehaviour
     {
@@ -28,7 +29,7 @@ namespace SPTForecaster
         /// <summary>The time bar's colour as drawn, as the forecast box uses.</summary>
         private static readonly Color Fill = new Color(0.051f, 0.059f, 0.059f, 0.9f);
 
-        private static Sprite _dot, _ring;
+        private static Sprite _dot;
 
         private TextMeshProUGUI _fallingLabel;
         private readonly Image[] _fallingDots = new Image[4];
@@ -39,10 +40,7 @@ namespace SPTForecaster
         private CanvasGroup _readout;
         private TextMeshProUGUI _readoutText;
         private RectTransform _readoutFill;
-        private RectTransform _ringRect;
-        private Image _ringImage;
         private int _lastMinute = -1;
-        private string _ringAt;
 
         private RectTransform _radarRect, _keyRect, _readoutRect;
         private float _readoutOffset, _readoutWidth;
@@ -136,7 +134,7 @@ namespace SPTForecaster
             }
         }
 
-        /// <summary>The playback readout above the key, as wide as it, and the ring for the selected map.</summary>
+        /// <summary>The playback readout above the key, as wide as it.</summary>
         private void AddPlayback(Transform radar, TextMeshProUGUI style, float size, int pad, RectTransform keyRect)
         {
             LayoutRebuilder.ForceRebuildLayoutImmediate(keyRect);
@@ -190,19 +188,6 @@ namespace SPTForecaster
             _readoutFill.anchorMin = Vector2.zero;
             _readoutFill.anchorMax = new Vector2(0f, 1f);
             _readoutFill.offsetMin = _readoutFill.offsetMax = Vector2.zero;
-
-            var ring = new GameObject("SPTForecasterRadarRing", typeof(RectTransform));
-            ring.transform.SetParent(radar, false);
-            ring.transform.SetAsFirstSibling();
-            ring.AddComponent<LayoutElement>().ignoreLayout = true;
-            _ringRect = (RectTransform)ring.transform;
-            _ringRect.pivot = new Vector2(0.5f, 0.5f);
-            _ringRect.sizeDelta = Vector2.one * Mathf.Round(size * 2.8f);
-            _ringImage = ring.AddComponent<Image>();
-            _ringImage.sprite = RingSprite();
-            _ringImage.color = new Color(style.color.r, style.color.g, style.color.b, 0.55f);
-            _ringImage.raycastTarget = false;
-            _ringImage.enabled = false;
         }
 
         private void Update()
@@ -233,20 +218,6 @@ namespace SPTForecaster
                 }
 
                 _readoutFill.anchorMax = new Vector2(progress ?? 0f, 1f);
-            }
-
-            var at = progress.HasValue ? RadarLayer.PlayLocation : null;
-            if (at != _ringAt)
-            {
-                _ringAt = at;
-                _ringImage.enabled = at != null && Maps.Position(at, out _, out _);
-                if (_ringImage.enabled)
-                {
-                    // The field's frame is the buttons container's, y down; the game anchors buttons the same way, y up.
-                    Maps.Position(at, out var x, out var y);
-                    _ringRect.anchorMin = _ringRect.anchorMax = new Vector2((float)(x / Field.W), (float)(1 - y / Field.H));
-                    _ringRect.anchoredPosition = Vector2.zero;
-                }
             }
         }
 
@@ -412,31 +383,6 @@ namespace SPTForecaster
                 Mathf.Lerp(Fill.g, (float)rgb[1] / 255f, s),
                 Mathf.Lerp(Fill.b, (float)rgb[2] / 255f, s),
                 1f);
-        }
-
-        /// <summary>A thin white antialiased ring, made once.</summary>
-        private static Sprite RingSprite()
-        {
-            if (_ring != null) return _ring;
-            const int n = 96;
-            const float thickness = 3f;
-            var texture = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-            var pixels = new Color32[n * n];
-            var r = n / 2f - thickness;
-            for (var j = 0; j < n; j++)
-            {
-                for (var i = 0; i < n; i++)
-                {
-                    float dx = i + 0.5f - n / 2f, dy = j + 0.5f - n / 2f;
-                    var a = Mathf.Clamp01(thickness / 2f + 0.5f - Mathf.Abs(Mathf.Sqrt(dx * dx + dy * dy) - r));
-                    pixels[j * n + i] = new Color32(255, 255, 255, (byte)(a * 255));
-                }
-            }
-
-            texture.SetPixels32(pixels);
-            texture.Apply(false);
-            _ring = Sprite.Create(texture, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
-            return _ring;
         }
 
         /// <summary>A white antialiased disc, made once.</summary>

@@ -55,6 +55,7 @@ namespace SPTForecaster
         private static bool _holding;
 
         private static bool? _traceSix;
+        private static BepInEx.Configuration.ConfigEntry<bool> _traceSixEnabled;
 
         private static bool TraceSixLoaded
         {
@@ -62,12 +63,71 @@ namespace SPTForecaster
             {
                 if (_traceSix == null)
                 {
-                    _traceSix = BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.matsix.tracesix");
-                    if (_traceSix.Value) ForecasterPlugin.Log.LogInfo("Lightning: TraceSix found, flashes light the sky and ambient only (not its sun).");
+                    _traceSix = BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue("com.matsix.tracesix", out var info);
+                    if (_traceSix.Value && info.Instance != null)
+                    {
+                        info.Instance.Config.TryGetEntry(new BepInEx.Configuration.ConfigDefinition("1. General", "Enabled"), out _traceSixEnabled);
+                    }
+
+                    if (_traceSix.Value)
+                    {
+                        ForecasterPlugin.Log.LogInfo("Lightning: TraceSix found" + (_traceSixEnabled != null ? ", following its Enabled toggle." : ", but not its Enabled setting (taken as on)."));
+                    }
                 }
 
                 return _traceSix.Value;
             }
+        }
+
+        /// <summary>
+        /// TraceSix's global illumination is on now (its toggle key flips this setting). It replaces the game's
+        /// sky ambient with its own light volumes, filled in over many frames, so an ambient flash came out as
+        /// the map slowly brightening and fading back: "weird" with TraceSix on, "good" with it toggled off
+        /// (Joel, 2026-10-29).
+        /// </summary>
+        private static bool TraceSixLighting => TraceSixLoaded && (_traceSixEnabled == null || _traceSixEnabled.Value);
+
+        // The flash's own light, used while TraceSix's lighting is on: a directional light of its own, high in
+        // the sky at each strike's bearing, with shadows, lit only while the flash flickers. TraceSix's
+        // volumes take only the game's sun and its lamps, so this one isn't smeared; FogSix looks for its sun
+        // when a raid starts, while this light is off.
+        private const float OwnPeak = 0.45f;
+        private static Light _own;
+
+        /// <summary>The flash's own light, if made yet (FogSixSunPatch keeps FogSix from taking it as its sun).</summary>
+        internal static Light Own => _own;
+        private static Quaternion _aim = Quaternion.Euler(65f, 0f, 0f);
+
+        /// <summary>A new strike: where its light comes from (somewhere high, any side).</summary>
+        public static void Aim()
+        {
+            _aim = Quaternion.Euler(UnityEngine.Random.Range(55f, 78f), UnityEngine.Random.Range(0f, 360f), 0f);
+        }
+
+        private static void OwnLight(float f)
+        {
+            if (f <= 0.001f)
+            {
+                if (_own != null && _own.enabled) _own.enabled = false;
+                return;
+            }
+
+            if (_own == null)
+            {
+                var go = new GameObject("SPTForecasterLightning");
+                _own = go.AddComponent<Light>();
+                _own.type = LightType.Directional;
+                _own.color = Tint;
+                _own.shadows = LightShadows.Hard;
+                _own.shadowStrength = 1f;
+                _own.shadowResolution = LightShadowResolution.Low;
+                _own.renderMode = LightRenderMode.ForcePixel;
+                _own.enabled = false;
+            }
+
+            _own.transform.rotation = _aim;
+            _own.intensity = f * OwnPeak;
+            if (!_own.enabled) _own.enabled = true;
         }
 
         public static void Hook()
@@ -76,6 +136,8 @@ namespace SPTForecaster
             _hooked = true;
             Camera.onPreCull += OnPreCull;
             CloudSixFlashPatch.TryEnable();
+            FogSixSunPatch.TryEnable();
+            ReturnOfThunderstormsCompat.TryEnable();
         }
 
         public static void Unhook()
@@ -84,14 +146,56 @@ namespace SPTForecaster
             _hooked = false;
             Camera.onPreCull -= OnPreCull;
             Release();
+            if (_own != null) UnityEngine.Object.Destroy(_own.gameObject);
+            _own = null;
         }
 
         /// <summary>How much of the flash shows now: all of it at night, a quarter at midday, times the config.</summary>
         public static float Visible(float flash)
         {
+            if (flash <= 0f) return 0f;
             var sky = MonoBehaviourSingleton<TOD_Sky>.Instance;
             var day = sky != null ? sky.LerpValue : 0f;
             return flash * Mathf.Lerp(1f, 0.25f, day) * ForecasterPlugin.LightningBrightness.Value;
+        }
+
+        /// <summary>
+        /// How much of the flash's light (the lights and the ambient, not the sky or clouds) reaches the player's
+        /// spot: all of it outside and at a window or doorway, none deep inside (Thunder.Openness). Glass doesn't
+        /// take shadows, so underground it caught that light through the ground above as if it were outside
+        /// (Joel, 2026-10-30). The sky and the clouds always flash: inside they're only seen through windows
+        /// and doorways anyway, and with the whole flash faded, deep in a building no flash showed even
+        /// through the windows (Joel, the same day).
+        /// </summary>
+        private static float Reach()
+        {
+            var open = Thunder.Openness(out var inside);
+            // Only underground. Above ground the light casts shadows, so in a building it only comes in through
+            // the windows and doorways, lighting the room the way lightning does; faded there too, deep in a
+            // building no flash showed at all (Joel, 2026-10-30).
+            if (!inside || !Underground()) return 1f;
+            return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 0.6f, open));
+        }
+
+        /// <summary>
+        /// The camera is below the ground's surface (a basement, a bunker, a tunnel): more than 1.5 m under the
+        /// terrain at its spot. Maps without terrain there (Streets) count as above ground.
+        /// </summary>
+        private static bool Underground()
+        {
+            var camera = Camera.main;
+            if (camera == null) return false;
+            var p = camera.transform.position;
+            foreach (var terrain in Terrain.activeTerrains)
+            {
+                if (terrain == null || terrain.terrainData == null) continue;
+                var origin = terrain.transform.position;
+                var size = terrain.terrainData.size;
+                if (p.x < origin.x || p.z < origin.z || p.x > origin.x + size.x || p.z > origin.z + size.z) continue;
+                return p.y < terrain.SampleHeight(p) + origin.y - 1.5f;
+            }
+
+            return false;
         }
 
         private static void OnPreCull(Camera camera)
@@ -121,6 +225,9 @@ namespace SPTForecaster
             if (!_holding || light != _light || Quaternion.Angle(turn.rotation, _writtenRotation) > 0.01f) _baseRotation = turn.rotation;
             _light = light;
 
+            var tracing = TraceSixLighting;
+            var lit = f > 0.001f ? f * Reach() : 0f;
+            OwnLight(tracing ? lit : 0f);
             if (f <= 0.001f)
             {
                 Release();
@@ -129,13 +236,14 @@ namespace SPTForecaster
 
             // With TraceSix the sun/moon light is left alone. TraceSix takes the map out of the game's sun
             // shadow whenever that light shines and gives it back half a second after it stops, so at night
-            // every flash flipped some 40,000 meshes there and back (its log, 2026-10-29). The flash is
-            // then sky and ambient light only, a little stronger.
-            var ambient = AmbientPeak;
+            // every flash flipped some 40,000 meshes there and back (its log, 2026-10-29). With its lighting
+            // on, the flash's own light lights the ground (above) and the ambient is left alone too; with it
+            // toggled off, the ambient carries the flash, a little stronger (that looked right in game).
+            var ambient = tracing ? 0f : AmbientPeak;
             if (TraceSixLoaded) ambient *= 1.4f;
             else
             {
-                var add = f * DirectPeak;
+                var add = lit * DirectPeak;
                 var share = add / (_base + add + 0.001f);
                 light.intensity = _base + add;
                 light.color = Color.Lerp(light.color, Tint, share);
@@ -146,11 +254,11 @@ namespace SPTForecaster
             }
 
             var todc = WeatherController.Instance != null ? WeatherController.Instance.TimeOfDayController : null;
-            if (todc != null && todc.AmbientLightScript != null)
+            if (ambient > 0f && lit > 0.001f && todc != null && todc.AmbientLightScript != null)
             {
                 var sh = todc.SH;
-                sh.AddAmbientLight(Tint * (f * ambient * 0.4f));
-                sh.AddDirectionalLight(Vector3.up, Tint, f * ambient);
+                sh.AddAmbientLight(Tint * (lit * ambient * 0.4f));
+                sh.AddDirectionalLight(Vector3.up, Tint, lit * ambient);
                 todc.AmbientLightScript.SetSH(sh);
             }
 
@@ -172,6 +280,60 @@ namespace SPTForecaster
             }
 
             _holding = false;
+        }
+    }
+
+    /// <summary>
+    /// FogSix (com.matsix.fogsix) takes the brightest shadowed directional light as its sun, for the fog's
+    /// sun shadows, at each scene load and 3, 11 and 26 s after. A flash in one of those moments with
+    /// TraceSix's lighting on would hand it the flash's own light, dark between flashes, for the rest of the
+    /// raid. Its pick skips that light: the next brightest, as FogSix would have chosen without it.
+    /// </summary>
+    internal sealed class FogSixSunPatch : ModulePatch
+    {
+        private static bool _tried;
+
+        private static MethodBase Target()
+        {
+            if (!BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue("com.matsix.fogsix", out var info) || info.Instance == null) return null;
+            var type = info.Instance.GetType().Assembly.GetType("FogSix.Source.FogShadows");
+            return type != null ? AccessTools.Method(type, "FindSun") : null;
+        }
+
+        /// <summary>At the first raid with lightning, once every plugin has loaded.</summary>
+        public static void TryEnable()
+        {
+            if (_tried) return;
+            _tried = true;
+            if (Target() == null)
+            {
+                if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.matsix.fogsix"))
+                {
+                    ForecasterPlugin.Log.LogWarning("FogSix found but not its sun search; a flash early in a raid could darken its fog shadows.");
+                }
+
+                return;
+            }
+
+            ForecasterPlugin.Enable(new FogSixSunPatch());
+            ForecasterPlugin.Log.LogInfo("Lightning stays out of FogSix's sun search.");
+        }
+
+        protected override MethodBase GetTargetMethod() => Target();
+
+        [PatchPostfix]
+        private static void Postfix(ref Light __result)
+        {
+            var own = LightningFlash.Own;
+            if (own == null || __result != own) return;
+            Light best = null;
+            foreach (var l in UnityEngine.Object.FindObjectsOfType<Light>())
+            {
+                if (l == null || l == own || l.type != LightType.Directional || !l.isActiveAndEnabled || l.shadows == LightShadows.None) continue;
+                if (best == null || l.intensity > best.intensity) best = l;
+            }
+
+            __result = best;
         }
     }
 

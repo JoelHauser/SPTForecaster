@@ -8,6 +8,7 @@ using Audio.SpatialSystem;
 using Comfort.Common;
 using EFT;
 using EFT.Weather;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Audio;
 using Random = UnityEngine.Random;
@@ -24,10 +25,9 @@ namespace SPTForecaster
     ///
     /// - The flash (LightningFlash) lights the sky, the outdoor ambient, the clouds and, more weakly, the
     ///   sun/moon light for a few flickers: a blue-white glow outdoors and through windows, not in rooms.
-    /// - The thunder plays through the same mixer group as the game's outdoor rain, which the game turns
-    ///   down and muffles by the room the player is in and the windows and doors to the outside (its
-    ///   portal system): full outdoors, muffled in a basement with windows, silent in a sealed bunker. A
-    ///   room whose outdoor sound the game sets to nothing gets no thunder at all, as a backstop.
+    /// - The thunder plays through the game's outdoor rain mixer group, which the game turns down and
+    ///   muffles by the windows and doors to the outside (its portal system), and, low and muffled, through
+    ///   its indoor rain group, which carries it through the walls once the outdoor group has gone quiet.
     ///
     /// While the game's weather debug override is on (TimeWeatherChanger's panel), its "Thunder probability"
     /// drives the storm instead, overhead, so that slider finally does something.
@@ -49,7 +49,8 @@ namespace SPTForecaster
         public static float Flash;
 
         private readonly List<AudioSource> _sources = new List<AudioSource>();
-        private AudioMixerGroup _group;
+        private AudioMixerGroup _group, _indoorGroup;
+        private AudioClip _lastClip;
         private AudioSource _template;
         private bool _groupLooked;
         private float _nextCheck;
@@ -210,9 +211,30 @@ namespace SPTForecaster
         // ---- the raid's storms -----------------------------------------------------------------------
 
         /// <summary>Called with the raid's blocks when its weather nodes are set.</summary>
+        /// <summary>The thunder sources' name (Return Of Thunderstorms' rain volume control skips it).</summary>
+        internal const string SourceName = "SPTForecasterThunder";
+
+        /// <summary>This raid runs on the forecast's weather (set with its nodes, cleared when the raid ends).</summary>
+        internal static bool ForecastRaid;
+
+        /// <summary>A thunderstorm over the player now, by the forecast (or the debug storm).</summary>
+        internal static bool StormOverhead()
+        {
+            var d = StormDistance(out _);
+            return d != null && d.Value <= 0;
+        }
+
+        /// <summary>A thunderstorm within <paramref name="metres"/> of the player now (its near edge).</summary>
+        internal static bool StormWithin(double metres)
+        {
+            var d = StormDistance(out _);
+            return d != null && d.Value * Field.MetresPerUnit <= metres;
+        }
+
         public static void Set(List<Block> blocks, double start, long raidTicks, double x, double y, int raidMinutes)
         {
             Spans.Clear();
+            ForecastRaid = true;
             Flash = 0;
             // The component goes on every raid (it does nothing without a storm), so the debug strikes always work.
             if (ForecasterPlugin.Lightning.Value) AddSpans(blocks, start, raidTicks, x, y, raidMinutes);
@@ -286,6 +308,7 @@ namespace SPTForecaster
             {
                 Flash = FlashNow(Time.unscaledTime);
                 DebugStrikes();
+                UpdateIndoorCopies();
                 if (!ForecasterPlugin.Lightning.Value && ForecasterPlugin.ForceStorm.Value == ForecasterPlugin.StormDebug.Off) return;
                 var now = Time.unscaledTime;
                 if (now < _nextCheck) return;
@@ -339,10 +362,16 @@ namespace SPTForecaster
 
         private void Strike(double units)
         {
-            // Overhead strikes land anywhere from a few hundred metres to a few km; farther storms, around their distance.
+            // Overhead strikes land from a couple of hundred metres to a few km, mostly close (spread evenly,
+            // most were 1-3 km and overhead sounded like the rest); farther storms, around their distance.
+            var r = Random.value;
+            // A storm's distance is its near edge (Field.ThunderDistance), and it strikes all through itself:
+            // now and then just in front, mostly a few km into it. 0.2.2's +-1.5 km put a whole raid's strikes
+            // at 1.8-4.4 km, about 6 dB apart, and they all sounded the same (Joel's log, 2026-10-30).
+            var edge = (float)(units * Field.MetresPerUnit);
             var metres = units <= 0
-                ? Random.Range(250f, 3000f)
-                : Mathf.Max(400f, (float)(units * Field.MetresPerUnit) + Random.Range(-1500f, 1500f));
+                ? 200f + 2800f * r * r
+                : Mathf.Clamp(edge * Random.Range(0.7f, 1f) - Mathf.Log(Mathf.Max(1e-4f, Random.value)) * 1200f, 300f, 14000f);
 
             StrikeAt(metres, true, true);
         }
@@ -363,6 +392,8 @@ namespace SPTForecaster
         {
             if (sound) StartCoroutine(Rumble(metres, flash ? metres / SpeedOfSound : 0f));
             if (!flash) return;
+            LightningFlash.Aim();
+            ReturnOfThunderstormsCompat.Strike();
 
             // The flash: a few flickers, 1 close by, half at 1.8 km, faint far off.
             var power = 1f / (1f + (metres / 1800f) * (metres / 1800f));
@@ -396,49 +427,181 @@ namespace SPTForecaster
         {
             yield return new WaitForSecondsRealtime(delay);
             EnsureClips();
-            var pool = metres < 2200f && Near.Count > 0 ? Near : Far.Count > 0 ? Far : Near;
+            var pool = metres < 1500f && Near.Count > 0 ? Near : Far.Count > 0 ? Far : Near;
             if (pool.Count == 0)
             {
                 if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo("Thunder: no clips loaded, nothing to play.");
                 yield break;
             }
 
-            if (!Audible(out var roomVolume))
-            {
-                if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo("Thunder: the player's room lets no outdoor sound in, not played.");
-                yield break;
-            }
-
             var group = MixerGroup();
-            var source = FreeSource();
-            source.clip = pool[Random.Range(0, pool.Count)];
-            source.outputAudioMixerGroup = group;
-            source.volume = Mathf.Clamp01(1.15f - metres / 12000f) * roomVolume * ForecasterPlugin.ThunderVolume.Value;
-            source.pitch = Random.Range(0.92f, 1.06f);
-            // Air takes the top off distant thunder: full brightness close by, a low rumble by 10 km.
-            source.GetComponent<AudioLowPassFilter>().cutoffFrequency = Mathf.Lerp(16000f, 700f, Mathf.Clamp01(metres / 10000f));
-            source.Play();
+            // Never the same clip twice running.
+            var clip = pool[Random.Range(0, pool.Count)];
+            if (clip == _lastClip && pool.Count > 1) clip = pool[(pool.IndexOf(clip) + Random.Range(1, pool.Count)) % pool.Count];
+            _lastClip = clip;
+            // The clips are all loudness-matched, so distance is all in here. 0.2.2 went from 1.0 overhead to
+            // 0.98 at 2 km and filtered nothing out below about 13 kHz there: every strike sounded the same
+            // (Joel, 2026-10-29). Now it falls about 4.5 dB per doubling past 300 m (a bit gentler than open
+            // air, which would leave far storms inaudible over the rain): 2 km about -12 dB, 8 km about -21 dB.
+            // 0.9: about 5.5 dB per doubling, nearly open air's 6: 1 km 0.34, 2 km 0.18, 4 km 0.10, 8 km 0.05.
+            var volume = Mathf.Pow(300f / Mathf.Max(metres, 300f), 0.9f) * ForecasterPlugin.ThunderVolume.Value;
+            // Far thunder rolls slower and lower.
+            var pitch = Random.Range(0.94f, 1.05f) * Mathf.Lerp(1f, 0.9f, Mathf.Clamp01(metres / 8000f));
+            // Air takes the top off distant thunder: a crack close by, about 8 kHz at 1 km, 4 kHz at 2 km,
+            // a low rumble under 1 kHz by 5 km.
+            var cutoff = 600f + 17400f * Mathf.Exp(-metres / 1200f);
+
+            // Two copies, started together, only one of them heard at a time. The outdoor one goes through the
+            // outdoor rain group, which the game turns down to nearly nothing a few steps inside (rain stops
+            // there; thunder doesn't), so on its own it could only be heard outside (Joel, 2026-10-29). The
+            // indoor one goes through the indoor rain group: muffled, ringing in the room, louder and clearer by
+            // a window. Both used to play at once, and the same sound through two effect chains, a hair apart,
+            // came out phasey and garbled, with a room's reverb outside too (Joel, 2026-10-30). Now the player's
+            // side of the doorway has its copy and the other is silent, crossfaded as they cross mid-rumble.
+            var start = AudioSettings.dspTime + 0.05;
+            var open = Openness(out var inside);
+            var mix = inside ? 1f : 0f;
+            var outdoors = Play(clip, group, volume * OutdoorGain(mix), pitch, cutoff, start, false);
+            var indoors = Play(clip, _indoorGroup, volume * IndoorShare(open) * IndoorGain(mix), pitch, IndoorCutoff(cutoff, open), start, true);
+            Reverb(indoors.GetComponent<AudioReverbFilter>(), open);
+            _rumbles.Add(new Pair { Outdoor = outdoors, Indoor = indoors, Volume = volume, Cutoff = cutoff, Open = open, ReverbOpen = open, Mix = mix });
+
             if (ForecasterPlugin.VerboseLog.Value)
             {
                 // Everything that decides whether it is heard, for when it isn't (0.2.1 was silent in game).
-                ForecasterPlugin.Log.LogInfo($"Thunder: '{source.clip.name}' ({source.clip.length:0.0} s, {source.clip.loadState}) at {metres:0} m, volume {source.volume:0.00} (room {roomVolume:0.00}), " +
-                    $"group '{(group != null ? group.name : "none")}', spatialize {source.spatialize}, blend {source.spatialBlend:0.#}, priority {source.priority}, " +
-                    $"playing {source.isPlaying}, listener volume {AudioListener.volume:0.00}{(AudioListener.pause ? " (paused)" : "")}.");
+                ForecasterPlugin.Log.LogInfo($"Thunder: '{clip.name}' ({clip.length:0.0} s, {clip.loadState}) at {metres:0} m, volume {volume:0.00}, low-pass {cutoff:0} Hz{(outdoors.bypassEffects ? " (bypassed!)" : "")}, " +
+                    $"group '{(group != null ? group.name : "none")}', {(inside ? $"inside (openness {open:0.00}), indoor copy {indoors.volume:0.00}" : "outside")} via '{(_indoorGroup != null ? _indoorGroup.name : "none")}'" +
+                    $", spatialize {outdoors.spatialize}, blend {outdoors.spatialBlend:0.#}, priority {outdoors.priority}, listener volume {AudioListener.volume:0.00}{(AudioListener.pause ? " (paused)" : "")}.");
             }
         }
 
-        /// <summary>
-        /// Whether thunder can be heard where the player is. The mixer group does the muffling; this only
-        /// silences rooms the game lets no outdoor sound into (a sealed bunker).
-        /// </summary>
-        private static bool Audible(out float roomVolume)
+        private AudioSource Play(AudioClip clip, AudioMixerGroup group, float volume, float pitch, float cutoff, double start, bool reverb)
         {
-            roomVolume = 1f;
+            var source = FreeSource();
+            source.clip = clip;
+            source.outputAudioMixerGroup = group;
+            source.volume = volume;
+            source.pitch = pitch;
+            source.GetComponent<AudioLowPassFilter>().cutoffFrequency = cutoff;
+            source.GetComponent<AudioReverbFilter>().enabled = reverb;
+            source.PlayScheduled(start);
+            return source;
+        }
+
+        /// <summary>
+        /// Inside, the thunder rings in the room it comes into, as it does in real life (Joel, 2026-10-29): by
+        /// a window mostly the thunder itself and a short room, deep inside more of the room than the thunder,
+        /// longer and darker (walls and floors soak up the highs). The indoor group carries none of the
+        /// game's room reverb, so this is the copy's own.
+        /// </summary>
+        private static void Reverb(AudioReverbFilter reverb, float open)
+        {
+            reverb.reverbPreset = AudioReverbPreset.User;
+            reverb.dryLevel = Mathf.Lerp(-150f, 0f, open);         // mB (-500 deep inside drowned the thunder)
+            reverb.room = Mathf.Lerp(-300f, -1400f, open);
+            reverb.roomHF = -1200f;
+            reverb.roomLF = 0f;
+            reverb.decayTime = Mathf.Lerp(1.9f, 1.0f, open);       // s
+            reverb.decayHFRatio = 0.45f;
+            reverb.reflectionsLevel = Mathf.Lerp(-200f, -1200f, open);
+            reverb.reflectionsDelay = 0.012f;
+            reverb.reverbLevel = Mathf.Lerp(400f, -600f, open);
+            reverb.reverbDelay = 0.03f;
+            reverb.diffusion = 100f;
+            reverb.density = 100f;
+            reverb.hfReference = 4000f;
+        }
+
+        /// <summary>One strike's two copies; Mix 0 is all outdoor, 1 all indoor.</summary>
+        private sealed class Pair
+        {
+            public AudioSource Outdoor, Indoor;
+            public float Volume, Cutoff, Open, ReverbOpen, Mix;
+        }
+
+        private readonly List<Pair> _rumbles = new List<Pair>();
+
+        // Equal-power crossfade, so the doorway doesn't dip.
+        private static float OutdoorGain(float mix) => Mathf.Cos(mix * Mathf.PI / 2f);
+        private static float IndoorGain(float mix) => Mathf.Sin(mix * Mathf.PI / 2f);
+
+        // Indoors, thunder comes in through the windows (often broken) and doorways: nearly all of it beside
+        // one, a muffled rumble through the walls deep inside (Joel, 2026-10-29: hear it more inside,
+        // especially with windows). The first version was a 450 Hz rumble at under half volume everywhere.
+        // Deep inside it was half volume, and with the reverb's dry cut and a 300 Hz filter a far strike came to
+        // about 2%: silent far from a window (Joel, 2026-10-30). Thunder carries into buildings.
+        private static float IndoorShare(float open) => Mathf.Lerp(0.85f, 1f, open);
+        // The walls take the top off on top of the air's, so a close crack still comes through brighter than a
+        // far rumble: deep inside about 2.1 kHz overhead and 500 Hz at 6 km, at a window what the air leaves.
+        // 0.2.2's indoor copy was cut to 500 Hz whatever the distance, so inside only the volume changed.
+        private static float IndoorCutoff(float cutoff, float open) => Mathf.Lerp(420f + 0.1f * cutoff, cutoff, open * open);
+
+        /// <summary>
+        /// The copies follow the player as they play: through doorways (a 0.4 s crossfade) and, inside,
+        /// between windows and the middle of rooms.
+        /// </summary>
+        private void UpdateIndoorCopies()
+        {
+            if (_rumbles.Count == 0) return;
+            var open = Openness(out var inside);
+            var dt = Time.unscaledDeltaTime;
+            for (var i = _rumbles.Count - 1; i >= 0; i--)
+            {
+                var c = _rumbles[i];
+                if (c.Outdoor == null || c.Indoor == null || (!c.Outdoor.isPlaying && !c.Indoor.isPlaying)) { _rumbles.RemoveAt(i); continue; }
+                c.Mix = Mathf.MoveTowards(c.Mix, inside ? 1f : 0f, dt / 0.4f);
+                // Openness eases too, so a step past a window doesn't jump.
+                var o = c.Open = Mathf.MoveTowards(c.Open, open, dt * 2f);
+                c.Outdoor.volume = c.Volume * OutdoorGain(c.Mix);
+                c.Indoor.volume = c.Volume * IndoorShare(o) * IndoorGain(c.Mix);
+                c.Indoor.GetComponent<AudioLowPassFilter>().cutoffFrequency = IndoorCutoff(c.Cutoff, o);
+                // The reverb only on real changes: setting it every frame can click.
+                if (Mathf.Abs(o - c.ReverbOpen) > 0.05f || (o != c.ReverbOpen && o == open))
+                {
+                    c.ReverbOpen = o;
+                    Reverb(c.Indoor.GetComponent<AudioReverbFilter>(), o);
+                }
+            }
+        }
+
+        private static AmbientSoundBlender _blender;
+        private static bool _blenderLooked;
+        private static readonly AccessTools.FieldRef<AmbientSoundBlender, float> OutdoorFilter =
+            AccessTools.FieldRefAccess<AmbientSoundBlender, float>("_currentOutdoorFilterValue");
+
+        /// <summary>
+        /// How open to the outside the player's spot is, 0-1: 1 outdoors and right at a window or doorway,
+        /// falling with distance from the nearest one, down to the room's own outdoor level deep inside. It's
+        /// the game's own measure, the one it muffles the outdoor sound by (AmbientSoundBlender's outdoor filter
+        /// value, from its portal search).
+        /// </summary>
+        internal static float Openness(out bool inside)
+        {
             var spatial = MonoBehaviourSingleton<SpatialAudioSystem>.Instance;
             var room = spatial != null ? spatial.ListenerCurrentRoom : null;
-            if (room == null || !room.IsValid || room.Type.IsOutdoor()) return true;
-            var outdoor = room.RoomAmbientData != null ? room.RoomAmbientData.OutdoorAmbientVolume : 1f;
-            return outdoor > 0.01f;
+            inside = room != null && room.IsValid && !room.Type.IsOutdoor();
+            if (!inside) return 1f;
+
+            if (!_blenderLooked || (_blender == null && Time.frameCount % 600 == 0))
+            {
+                _blenderLooked = true;
+                _blender = FindObjectOfType<AmbientSoundBlender>();
+            }
+
+            if (_blender != null)
+            {
+                try
+                {
+                    return Mathf.Clamp01(OutdoorFilter(_blender));
+                }
+                catch
+                {
+                    _blender = null;
+                }
+            }
+
+            var outdoor = room.RoomAmbientData != null ? room.RoomAmbientData.OutdoorAmbientVolume : 0.3f;
+            return Mathf.Clamp01(outdoor);
         }
 
         private AudioSource FreeSource()
@@ -448,7 +611,7 @@ namespace SPTForecaster
                 if (!s.isPlaying) return s;
             }
 
-            var go = new GameObject("SPTForecasterThunder");
+            var go = new GameObject(SourceName);
             go.transform.SetParent(transform, false);
             var source = go.AddComponent<AudioSource>();
             source.playOnAwake = false;
@@ -463,7 +626,7 @@ namespace SPTForecaster
                 source.spatialize = _template.spatialize;
                 source.spatializePostEffects = _template.spatializePostEffects;
                 source.spatialBlend = _template.spatialBlend;
-                source.bypassEffects = _template.bypassEffects;
+                // Not bypassEffects: the distance low-pass below is a source effect.
                 source.bypassListenerEffects = _template.bypassListenerEffects;
                 source.bypassReverbZones = _template.bypassReverbZones;
                 source.reverbZoneMix = _template.reverbZoneMix;
@@ -473,7 +636,9 @@ namespace SPTForecaster
                 source.priority = Mathf.Max(0, _template.priority - 8);
             }
 
+            // In this order: muffled by the walls first, then ringing in the room.
             go.AddComponent<AudioLowPassFilter>();
+            go.AddComponent<AudioReverbFilter>().enabled = false;
             _sources.Add(source);
             return source;
         }
@@ -485,22 +650,32 @@ namespace SPTForecaster
             _groupLooked = true;
             foreach (var blender in FindObjectsOfType<PrecipitationAmbientBlender>())
             {
-                if (blender._environment == EnvironmentType.Outdoor && blender._outputMixerGroup != null)
+                if (blender._outputMixerGroup == null) continue;
+                if (blender._environment == EnvironmentType.Outdoor && _group == null)
                 {
                     _group = blender._outputMixerGroup;
                     _template = blender._precipitationSource;
-                    break;
+                }
+                else if (blender._environment == EnvironmentType.Indoor && _indoorGroup == null)
+                {
+                    _indoorGroup = blender._outputMixerGroup;
                 }
             }
 
             if (_group == null && MonoBehaviourSingleton<BetterAudio>.Instantiated) _group = MonoBehaviourSingleton<BetterAudio>.Instance.AmbientOutMixer;
-            if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo("Thunder plays through mixer group '" + (_group != null ? _group.name : "none") + "'.");
+            // The same group both ways would play it twice outside.
+            if (_indoorGroup == _group) _indoorGroup = null;
+            if (ForecasterPlugin.VerboseLog.Value)
+            {
+                ForecasterPlugin.Log.LogInfo("Thunder plays through mixer group '" + (_group != null ? _group.name : "none") + "', indoors '" + (_indoorGroup != null ? _indoorGroup.name : "none") + "'.");
+            }
             return _group;
         }
 
         private void OnDestroy()
         {
             if (_instance == this) _instance = null;
+            ForecastRaid = false;
             Flash = 0;
             LightningFlash.Unhook();
         }

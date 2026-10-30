@@ -8,7 +8,7 @@ distance itself (delay after the flash, quieter, more muffled the further away).
 
 Usage: python tools/thunder_clips.py <folder with the downloaded recordings> <output folder>
 Then: python tools/derain.py <output folder>   (takes out the recordings' own rain)
-Needs numpy and soundfile.
+Needs numpy and soundfile (and ffmpeg on the PATH for Oggs libsndfile can't open).
 """
 import json
 import os
@@ -33,8 +33,43 @@ STRIKES = [
     ("Thunder_Claps.ogg", 3.5, 19.0),
     ("Thunder_Claps.ogg", 22.5, 6.0),
     ("Thunder_crack_2B.ogg", 3.5, 7.0),
-    ("Very_close_thunder_cracks.flac", None, None),   # strikes found automatically if the file is there
+    # 0.2.3: more variety (Joel, 2026-10-30), strikes picked with auto_strikes, 20 dB or more over the rain;
+    # four more were dropped for the rain left in them after tools/derain.py.
+    ("Very_close_thunder_cracks.flac", 6.25, 10.5),
+    ("Very_close_thunder_cracks.flac", 19.75, 13.0),
+    ("Storm_thunderbolts.ogg", 5.0, 9.5),
+    ("Storm_thunderbolts.ogg", 34.5, 7.75),
+    ("Storm_thunderbolts.ogg", 67.25, 6.75),
+    ("Storm_thunderbolts.ogg", 72.0, 8.75),
+    ("Storm_thunderbolts.ogg", 87.75, 13.5),
+    ("Storm_thunderbolts.ogg", 157.5, 6.0),
+    ("Booming_Thunder_2023-10-09_2-07-34_am.ogg", 9.75, 16.0),
+    ("Thunder_01.ogg", 0.5, 6.0),
+    ("Thunder_and_rain_on_a_v.ogg", 6.0, 11.5),
+    ("Truenos_y_lluvia_(sonido)_07.wav", 1.25, 16.0),
+    ("Truenos_y_lluvia_(sonido)_11.wav", 6.25, 11.0),
+    ("Thunderstorm_after_hot_summer_day_17_minutes_01_of_04.ogg", 159.25, 8.5),
+    ("Thunderstorm_after_hot_summer_day_17_minutes_02_of_04.ogg", 21.5, 7.0),
+    ("Thunderstorm_after_hot_summer_day_17_minutes_02_of_04.ogg", 226.25, 16.0),
+    ("Thunderstorm_after_hot_summer_day_17_minutes_04_of_04.ogg", 4.25, 6.75),
 ]
+
+
+_cache = {}
+
+
+def read(path):
+    """A recording as mono at RATE. Some Commons Oggs are in a form libsndfile can't open; ffmpeg converts those."""
+    if path not in _cache:
+        try:
+            x, r = sf.read(path, always_2d=True)
+        except Exception:
+            import subprocess, tempfile
+            tmp = os.path.join(tempfile.mkdtemp(), "x.wav")
+            subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", path, "-ac", "1", "-ar", str(RATE), tmp], check=True)
+            x, r = sf.read(tmp, always_2d=True)
+        _cache[path] = resample(x.mean(axis=1), r)
+    return _cache[path]
 
 
 def resample(x, r):
@@ -100,15 +135,15 @@ def kind(seg):
 
 def main(src, out):
     os.makedirs(out, exist_ok=True)
-    made, n = [], 0
-    for name, start, length in STRIKES:
+    made = []
+    # Numbered by place in STRIKES, so a missing source never renumbers the clips after it.
+    for n, (name, start, length) in enumerate(STRIKES, 1):
         path = os.path.join(src, name)
         if not os.path.exists(path) or os.path.getsize(path) == 0:
             print("missing", name)
             continue
-        x, r = sf.read(path, always_2d=True)
-        x = resample(x.mean(axis=1), r)
-        for s, l in ([(start, length)] if start is not None else auto_strikes(x)):
+        x = read(path)
+        for s, l in [(start, length)]:
             seg = cut(x, s, l)
             if len(seg) < RATE * 2:
                 continue
@@ -119,7 +154,6 @@ def main(src, out):
             if peak > 0.89:
                 seg *= 0.89 / peak
             k, bright = kind(seg)
-            n += 1
             fn = f"thunder_{k}_{n:02d}.wav"
             # Plain 16-bit WAV, which the plugin reads itself: Unity's Ogg Vorbis loader, in EFT, turned
             # these clips (written by libsndfile) into empty, 0 s AudioClips (0.2.1, 2026-10-29).

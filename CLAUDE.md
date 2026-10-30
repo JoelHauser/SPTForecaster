@@ -94,6 +94,40 @@ look at 0.2.1:
   HF floor fell 7-11 dB with the gentle pass alone; spectrograms (scratchpad) show the crack and rumble
   kept, tail hiss and drop streaks gone. Applied in place to assets/thunder, installed, not heard in game.
 
+- **After the v0.2.2 release:** with TraceSix on, a flash "just makes the map brighter and fades back";
+  toggled off, it "looks good" (Joel). TraceSix's GI (config `1. General / Enabled`, flipped by its toggle
+  key) replaces the game's sky ambient with light volumes filled over many frames, so the ambient (SH)
+  flash got smeared. `LightningFlash` now reads that entry live: TraceSix lighting on -> no SH; the
+  ground is lit by our own directional light (`SPTForecasterLightning`, hard shadows, low-res, aimed
+  55-78 deg up at a random bearing per strike via `LightningFlash.Aim`), enabled only while the flash is
+  above zero. TraceSix's volumes take only the game's sun and lamps, so it isn't smeared. Toggled off ->
+  ambient x1.4 as before. Not TraceSix -> TOD light + SH as before. Caveat: in daytime RayTracedWorld mode
+  TraceSix strips the map's meshes from shadow casting, so our light is unshadowed then (flash is weak
+  by day). Installed 2026-10-29 (still 0.2.2; dist zip now differs from the GitHub v0.2.2 asset), unseen.
+
+- **Later, 2026-10-29/30 (pushed to release-0.2.0, still versioned 0.2.2, not released):**
+  - Selected-map ring on the radar removed (it sat beside the name plate and looked like a stray circle).
+  - Thunder distance: strikes spread from the storm's near edge back into it (exponential, mean 1.2 km;
+    0.2.2's +-1.5 km put a whole raid at 1.8-4.4 km, all alike), volume ~5.5 dB per doubling past 300 m,
+    low-pass `600 + 17400 e^(-m/1200)`, overhead strikes biased close, near clips under 1.5 km, no clip
+    twice running. `Field.MetresPerUnit` 40 -> 20 (the map icons put Customs-Woods ~1.5-2 km), rings out
+    to 500 units so earshot stays 10 km.
+  - Indoors: the game fades the outdoor rain group to near nothing a few steps in (AmbientSoundBlender),
+    so each strike is two scheduled copies, outdoor group + indoor rain group (`PrecipitationAmbientIn`),
+    equal-power crossfaded by inside/outside (0.4 s); both audible at once was phasey/"garbled". Indoor
+    copy follows the game's own openness (`AmbientSoundBlender._currentOutdoorFilterValue`, 1 at a window,
+    the room's OutdoorAmbientVolume deep in): volume 0.85-1, cutoff `Lerp(420 + 0.1c, c, open^2)`, and an
+    AudioReverbFilter (wetter, longer deep inside; reverb set only on real changes). Joel: reverb "great".
+  - Flash: transparent glass takes no shadows, so underground glass caught the flash. The flash's lights and
+    ambient now fade by openness only when the camera is >1.5 m under the terrain (`Underground`, needs the
+    TerrainModule reference); sky colours and clouds always flash. Fading it in every building hid the
+    flash deep inside them.
+  - 17 more thunder clips (29: 10 near, 19 far) from 7 more Commons recordings, cut by
+    tools/thunder_clips.py (now numbered by STRIKES position, ffmpeg fallback for odd Oggs) + derain.py;
+    four more were dropped for leftover rain. THUNDER_CREDITS.md lists them. Zip ~18 MB.
+  - FogSix and Return Of Thunderstorms compatibility (see Compatibility).
+  None of this has been through a full test raid yet beyond the reverb and the log checks.
+
 ## Earlier: the home test of 0.2.1
 
 0.2.1 (2026-10-29) reworks the lightning flash (see Thunderstorms; 0.2.0's flash added to TOD's light
@@ -378,6 +412,24 @@ touches weather, time, `LocationConditionsPanel` or Next/Ready; its server only 
 It adds a faction-colour Voronoi image as the first child of `Content/Map/Image` and recolours
 `LocationButton`s. The radar sits above that image (just below the buttons) and is translucent, and never
 touches button colours.
+
+**FogSix** (`com.matsix.fogsix` 1.0.1, read 2026-10-30): picks the brightest shadowed directional light as its
+sun (fog sun shadows) at each scene load and 3, 11, 26 s after. Our flash light could win a scan that
+landed mid-flash and stay its sun for the raid; `FogSixSunPatch` (postfix on `FogShadows.FindSun`) skips
+it. Its light tracking takes only point/spot lights.
+
+**Return Of Thunderstorms** (github.com/killdg/Return-Of-Thunderstorms, `com.killdg.returnofthunderstorms`
+1.2.1, read 2026-10-30): its own storms (rolls each rain period, heavy rain via a ControlRain prefix, a
+heavy-rain recording replacing the game's rain, WorldVolume ducking, hurricane wind/debris, night lamp
+flicker, own thunder + unshadowed flash). Its `StormtideSound.Apply` scaled every source on a
+`PrecipitationAmbient*` group as rain, i.e. our thunder. `ReturnOfThunderstormsCompat` (all by name, each
+target checked against its release DLL; a missing one is skipped and named in the log): Apply skips
+sources named `Thunder.SourceName`; in a forecast raid (`Thunder.ForecastRaid`) its `RainEpisode.Tick` =
+forecast storm within 2 km (`Thunder.StormWithin`); its heavy rain (`HeavyRain.Prefix`), recording
+(`StormtideRecordedRain.Tick`, kept running silent because its wind reads the recording's exposure) and
+ducking (`WorldAudioDucking.Tick`) wait for the storm overhead; its `StormtideThunder.Tick` is held while
+ours runs, and each of our strikes calls its `LightningLightFlicker.Strike` (it flickers only at night,
+and finds lamps only during its storm). Its release zip nests everything under `INSTALL/`.
 
 ## What the first test has to look at
 

@@ -737,10 +737,15 @@ namespace SPTForecaster
             return null;
         }
 
-        /// <summary>Rings searched for thunderstorms, frame units; one unit is taken as 40 m, so the last is 10 km.</summary>
-        private static readonly double[] ThunderRings = { 15, 30, 50, 75, 105, 140, 185, 250 };
+        /// <summary>Rings searched for thunderstorms, frame units; one unit is taken as 20 m, so the last is 10 km.</summary>
+        private static readonly double[] ThunderRings = { 15, 30, 50, 75, 105, 140, 185, 250, 330, 420, 500 };
 
-        public const double ThunderReach = 250, MetresPerUnit = 40;
+        /// <summary>
+        /// 20 m a unit: the maps' icons sit about where the maps do, Customs to Woods some 1.5-2 km, Customs to
+        /// Lighthouse 5-6 km. 0.2.2 took 40 m, twice the region's size, so a storm over the next map sounded
+        /// 3-4 km off (Joel, 2026-10-30: "maps aren't that large"). Only thunder distances use it.
+        /// </summary>
+        public const double ThunderReach = 500, MetresPerUnit = 20;
 
         /// <summary>
         /// Whether heavy rain in the hour of <paramref name="t"/> is a thunderstorm: the season's thunder odds, three
