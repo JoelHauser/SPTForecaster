@@ -99,7 +99,8 @@ look at 0.2.1:
   key) replaces the game's sky ambient with light volumes filled over many frames, so the ambient (SH)
   flash got smeared. `LightningFlash` now reads that entry live: TraceSix lighting on -> no SH; the
   ground is lit by our own directional light (`SPTForecasterLightning`, hard shadows, low-res, aimed
-  55-78 deg up at a random bearing per strike via `LightningFlash.Aim`), enabled only while the flash is
+  random bearing per strike via `LightningFlash.Aim`, as high as a 2 km cloud base over the strike:
+  overhead ~80 deg, 3 km ~35, far 22; at a fixed 55-78 it only lit window sills, never the room), enabled only while the flash is
   above zero. TraceSix's volumes take only the game's sun and lamps, so it isn't smeared. Toggled off ->
   ambient x1.4 as before. Not TraceSix -> TOD light + SH as before. Caveat: in daytime RayTracedWorld mode
   TraceSix strips the map's meshes from shadow casting, so our light is unshadowed then (flash is weak

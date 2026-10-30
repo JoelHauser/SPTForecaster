@@ -52,9 +52,8 @@ namespace SPTForecaster
         /// <summary>The Tarkov second to show: the selected slot's raid start (set by the forecast panel).</summary>
         public static double? TargetTime;
 
-        /// <summary>The selected raid's length in raid minutes and its location, for playback.</summary>
+        /// <summary>The selected raid's length in raid minutes, for playback.</summary>
         public static int RaidMinutes = 40;
-        public static string PlayLocation { get; private set; }
 
         /// <summary>Where playback is in the raid, 0..1, or null when the radar rests on the start.</summary>
         public static float? PlayProgress { get; private set; }
@@ -106,7 +105,6 @@ namespace SPTForecaster
             var key = locationId + (rightSlot ? " right" : " left");
             if (key == _slotKey) return;
             _slotKey = key;
-            PlayLocation = play ? locationId : null;
             if (_live != null) _live.Queue(play);
         }
 

@@ -39,7 +39,7 @@ namespace SPTForecaster
         private const double StormReachMetres = 2000; // about a map away
 
         /// <summary>Its heavy rain waits: a forecast raid, and the storm not yet overhead.</summary>
-        private static bool HoldRain => Thunder.ForecastRaid && !Thunder.StormOverhead();
+        private static bool HoldRain => OursActive && !Thunder.StormOverhead();
 
         /// <summary>At the first raid, once every plugin has loaded.</summary>
         public static void TryEnable()
@@ -127,7 +127,7 @@ namespace SPTForecaster
             [PatchPostfix]
             private static void Postfix(bool enabled, ref bool __result)
             {
-                if (enabled && Thunder.ForecastRaid) __result = Thunder.StormWithin(StormReachMetres);
+                if (enabled && OursActive) __result = Thunder.StormWithin(StormReachMetres);
             }
         }
 

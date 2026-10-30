@@ -210,7 +210,6 @@ namespace SPTForecaster
 
         // ---- the raid's storms -----------------------------------------------------------------------
 
-        /// <summary>Called with the raid's blocks when its weather nodes are set.</summary>
         /// <summary>The thunder sources' name (Return Of Thunderstorms' rain volume control skips it).</summary>
         internal const string SourceName = "SPTForecasterThunder";
 
@@ -231,10 +230,10 @@ namespace SPTForecaster
             return d != null && d.Value * Field.MetresPerUnit <= metres;
         }
 
+        /// <summary>Called with the raid's blocks when its weather nodes are set.</summary>
         public static void Set(List<Block> blocks, double start, long raidTicks, double x, double y, int raidMinutes)
         {
             Spans.Clear();
-            ForecastRaid = true;
             Flash = 0;
             // The component goes on every raid (it does nothing without a storm), so the debug strikes always work.
             if (ForecasterPlugin.Lightning.Value) AddSpans(blocks, start, raidTicks, x, y, raidMinutes);
@@ -242,6 +241,8 @@ namespace SPTForecaster
             var weather = WeatherController.Instance;
             if (weather == null) return;
             if (weather.GetComponent<Thunder>() == null) weather.gameObject.AddComponent<Thunder>();
+            // Only with the component on: its OnDestroy is what clears it.
+            ForecastRaid = true;
             LightningFlash.Hook();
             if (ForecasterPlugin.VerboseLog.Value)
             {
@@ -298,6 +299,9 @@ namespace SPTForecaster
         private void Awake()
         {
             _instance = this;
+            // Last raid's blender is gone.
+            _blender = null;
+            _blenderLooked = false;
             // A raid: the audio has usually been reset on the way in, which empties the clips.
             EnsureClips();
         }
@@ -331,7 +335,24 @@ namespace SPTForecaster
         }
 
         /// <summary>Distance (frame units) of the storm now, or null for none; strength scales the strike rate.</summary>
+        private static int _distanceFrame = -1;
+        private static double? _distance;
+        private static float _strength;
+
         private static double? StormDistance(out float strength)
+        {
+            // Several of Return Of Thunderstorms' hooks ask every frame; it only changes between blocks.
+            if (_distanceFrame != Time.frameCount)
+            {
+                _distanceFrame = Time.frameCount;
+                _distance = StormDistanceNow(out _strength);
+            }
+
+            strength = _strength;
+            return _distance;
+        }
+
+        private static double? StormDistanceNow(out float strength)
         {
             strength = 1f;
             switch (ForecasterPlugin.ForceStorm.Value)
@@ -392,7 +413,7 @@ namespace SPTForecaster
         {
             if (sound) StartCoroutine(Rumble(metres, flash ? metres / SpeedOfSound : 0f));
             if (!flash) return;
-            LightningFlash.Aim();
+            LightningFlash.Aim(metres);
             ReturnOfThunderstormsCompat.Strike();
 
             // The flash: a few flickers, 1 close by, half at 1.8 km, faint far off.
@@ -458,8 +479,15 @@ namespace SPTForecaster
             // a window. Both used to play at once, and the same sound through two effect chains, a hair apart,
             // came out phasey and garbled, with a room's reverb outside too (Joel, 2026-10-30). Now the player's
             // side of the doorway has its copy and the other is silent, crossfaded as they cross mid-rumble.
-            var start = AudioSettings.dspTime + 0.05;
             var open = Openness(out var inside);
+            // A sealed room underground (a bunker the game lets no outdoor sound into) hears nothing.
+            if (inside && open <= 0.01f && LightningFlash.Underground())
+            {
+                if (ForecasterPlugin.VerboseLog.Value) ForecasterPlugin.Log.LogInfo($"Thunder: '{clip.name}' at {metres:0} m skipped, sealed underground.");
+                yield break;
+            }
+
+            var start = AudioSettings.dspTime + 0.05;
             var mix = inside ? 1f : 0f;
             var outdoors = Play(clip, group, volume * OutdoorGain(mix), pitch, cutoff, start, false);
             var indoors = Play(clip, _indoorGroup, volume * IndoorShare(open) * IndoorGain(mix), pitch, IndoorCutoff(cutoff, open), start, true);
@@ -566,8 +594,9 @@ namespace SPTForecaster
 
         private static AmbientSoundBlender _blender;
         private static bool _blenderLooked;
-        private static readonly AccessTools.FieldRef<AmbientSoundBlender, float> OutdoorFilter =
-            AccessTools.FieldRefAccess<AmbientSoundBlender, float>("_currentOutdoorFilterValue");
+        // Looked up on first use, inside the try below: a renamed field then falls back instead of failing the
+        // type's static set-up (which would stop the whole plugin at start-up).
+        private static AccessTools.FieldRef<AmbientSoundBlender, float> _outdoorFilter;
 
         /// <summary>
         /// How open to the outside the player's spot is, 0-1: 1 outdoors and right at a window or doorway,
@@ -592,7 +621,8 @@ namespace SPTForecaster
             {
                 try
                 {
-                    return Mathf.Clamp01(OutdoorFilter(_blender));
+                    if (_outdoorFilter == null) _outdoorFilter = AccessTools.FieldRefAccess<AmbientSoundBlender, float>("_currentOutdoorFilterValue");
+                    return Mathf.Clamp01(_outdoorFilter(_blender));
                 }
                 catch
                 {
@@ -663,8 +693,9 @@ namespace SPTForecaster
             }
 
             if (_group == null && MonoBehaviourSingleton<BetterAudio>.Instantiated) _group = MonoBehaviourSingleton<BetterAudio>.Instance.AmbientOutMixer;
-            // The same group both ways would play it twice outside.
-            if (_indoorGroup == _group) _indoorGroup = null;
+            // Never no group: a source without one skips the game's mixer (its volume sliders, pause). Only one
+            // copy is heard at a time, so sharing the outdoor group is fine.
+            if (_indoorGroup == null) _indoorGroup = _group;
             if (ForecasterPlugin.VerboseLog.Value)
             {
                 ForecasterPlugin.Log.LogInfo("Thunder plays through mixer group '" + (_group != null ? _group.name : "none") + "', indoors '" + (_indoorGroup != null ? _indoorGroup.name : "none") + "'.");

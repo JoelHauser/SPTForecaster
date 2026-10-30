@@ -98,10 +98,17 @@ namespace SPTForecaster
         internal static Light Own => _own;
         private static Quaternion _aim = Quaternion.Euler(65f, 0f, 0f);
 
-        /// <summary>A new strike: where its light comes from (somewhere high, any side).</summary>
-        public static void Aim()
+        /// <summary>
+        /// A new strike: where its light comes from, any side, as high as the lit cloud base (about 2 km up) sits
+        /// over a strike that far off: overhead nearly straight down, 3 km away about 35 degrees. Always 55-78
+        /// degrees, the light only fell on the sill of a window or doorway and never into the room (Joel,
+        /// 2026-10-30: the flashes showed outside but didn't come in).
+        /// </summary>
+        public static void Aim(float metres)
         {
-            _aim = Quaternion.Euler(UnityEngine.Random.Range(55f, 78f), UnityEngine.Random.Range(0f, 360f), 0f);
+            var height = Mathf.Atan2(2000f, Mathf.Max(metres, 1f)) * Mathf.Rad2Deg;
+            var pitch = Mathf.Clamp(height + UnityEngine.Random.Range(-5f, 5f), 22f, 80f);
+            _aim = Quaternion.Euler(pitch, UnityEngine.Random.Range(0f, 360f), 0f);
         }
 
         private static void OwnLight(float f)
@@ -181,7 +188,7 @@ namespace SPTForecaster
         /// The camera is below the ground's surface (a basement, a bunker, a tunnel): more than 1.5 m under the
         /// terrain at its spot. Maps without terrain there (Streets) count as above ground.
         /// </summary>
-        private static bool Underground()
+        internal static bool Underground()
         {
             var camera = Camera.main;
             if (camera == null) return false;
