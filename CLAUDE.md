@@ -8,8 +8,8 @@ player-facing summary; the design detail is here. Called SPTForecaster up to 0.2
 
 ## Status
 
-1.0.0 released on GitHub 2026-10-30 (tag v1.0.0 on `release-0.2.0`, Latest). PR #1 (release-0.2.0 -> main) is
-open: `main` is still 0.1.0 until Joel merges it. Not on the Forge yet (Joel uploads; the Forge is now
+1.0.0 released on GitHub 2026-10-30 (tag v1.0.0, Latest). PR #1 merged into `main` the same day; work on
+`main` from here (`release-0.2.0` is done). Not on the Forge yet (Joel uploads; the Forge is now
 sp-mod.com). Earlier development notes (0.0.x-0.3.0 test logs) are in this file's git history.
 
 Not yet seen in game: near vs far thunder, no flash underground, seasons other than autumn, blizzards,
