@@ -151,6 +151,9 @@ namespace SPTForecaster
         private static readonly Dictionary<long, string> PatternCache = new Dictionary<long, string>();
         private static int _seed;
         private static int _season;
+
+        /// <summary>Bumped with every cache clear, so a render that started before it can't store old cells after it.</summary>
+        private static int _generation;
         private static string _forcedPattern;
 
         /// <summary>
@@ -166,6 +169,7 @@ namespace SPTForecaster
                 {
                     if (value == _forcedPattern) return;
                     _forcedPattern = value;
+                    _generation++;
                     CellCache.Clear();
                     SteerCache.Clear();
                 }
@@ -182,6 +186,7 @@ namespace SPTForecaster
                 {
                     if (value == _seed) return;
                     _seed = value;
+                    _generation++;
                     CellCache.Clear();
                     PatternCache.Clear();
                     SteerCache.Clear();
@@ -200,6 +205,7 @@ namespace SPTForecaster
                 {
                     if (value == _season) return;
                     _season = value;
+                    _generation++;
                     CellCache.Clear();
                     PatternCache.Clear();
                     SteerCache.Clear();
@@ -449,9 +455,11 @@ namespace SPTForecaster
 
         private static List<Cell> CellsForHour(long h)
         {
+            int generation;
             lock (Gate)
             {
                 if (CellCache.TryGetValue(h, out var cached)) return cached;
+                generation = _generation;
             }
 
             var r = new Rng(Mix(Seed, (int)h));
@@ -479,6 +487,8 @@ namespace SPTForecaster
 
             lock (Gate)
             {
+                // Made from a seed, season or forced pattern that has changed since (the radar renders on a worker).
+                if (generation != _generation) return outList;
                 if (CellCache.Count > 4000) CellCache.Clear();
                 CellCache[h] = outList;
             }

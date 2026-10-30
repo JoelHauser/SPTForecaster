@@ -4,6 +4,9 @@ namespace SPTForecaster.Server;
 
 public record ModMetadata : IModMetadata
 {
+    /// <summary>The one place the server half names its version; must match the csproj and the client's PluginVersion.</summary>
+    public const string VersionText = "0.3.0";
+
     /// <summary>The same GUID the client plugin declares.</summary>
     public string ModGuid { get; init; } = "com.mybutthasarash.sptforecaster";
 
@@ -13,7 +16,7 @@ public record ModMetadata : IModMetadata
 
     public List<string>? Contributors { get; init; }
 
-    public SemanticVersioning.Version Version { get; init; } = new("0.2.2");
+    public SemanticVersioning.Version Version { get; init; } = new(VersionText);
 
     /// <summary>A hard gate: outside this range the mod loads nothing and logs nothing.</summary>
     public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");

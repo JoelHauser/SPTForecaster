@@ -174,6 +174,7 @@ namespace SPTForecaster
                     var id = System.Text.Encoding.ASCII.GetString(b, at, 4);
                     var size = BitConverter.ToInt32(b, at + 4);
                     var body = at + 8;
+                    if (size < 0) break;
                     if (id == "fmt ")
                     {
                         format = BitConverter.ToUInt16(b, body);

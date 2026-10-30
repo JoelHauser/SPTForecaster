@@ -8,8 +8,8 @@ namespace SPTForecaster
 {
     /// <summary>
     /// The radar's key, in the forecast box's right half under the playback slider (Joel's layout,
-    /// 2026-10-29), or, with no box (no map picked, Labs, Factory), on the radar's bottom-right corner as a
-    /// strip in the time bar's colours. In the "SELECT TIME PHASE:" label's style:
+    /// 2026-10-29). With no box (no map picked, Labs, Factory) it waits, hidden, on the radar's bottom-right
+    /// corner. In the "SELECT TIME PHASE:" label's style:
     ///
     ///   RAIN ● ● ● ●    FOG ● ● ● ●    CLOUD ● ●
     ///
@@ -17,8 +17,8 @@ namespace SPTForecaster
     /// reads SNOW, in the snow colours, in winter. Fog: mist, fog, dense fog, thick fog. Cloud: partly cloudy, overcast.
     /// Only weather the game has; the colours come from RadarRenderer, so the key can't drift from the radar.
     ///
-    /// While the radar plays a raid through (RadarLayer.PlayProgress), a readout as wide as the key sits
-    /// just above it ("RAID +25 MIN" over a thin progress bar). It used to ring the selected map too, but
+    /// Above it, a readout as wide as the key ("RAID +25 MIN" over a thin progress bar) follows the radar's
+    /// playback (RadarLayer.PlayProgress) and reads "RAID START" between plays. It used to ring the selected map too, but
     /// the ring sat beside the map's name plate, not around it, and looked out of place (Joel, 2026-10-29).
     /// </summary>
     internal sealed class RadarKey : MonoBehaviour
@@ -54,9 +54,7 @@ namespace SPTForecaster
         private VerticalLayoutGroup _readoutColumn;
         private RectOffset _keyPadding, _readoutPadding;
         private static readonly RectOffset NoPadding = new RectOffset(0, 0, 0, 0);
-        private Vector2 _shift;
         private float _nextPlace;
-        private static readonly Vector3[] Corners = new Vector3[4];
 
         /// <summary>Put the key on the radar (once), which covers exactly the buttons container.</summary>
         public static void Attach(Transform radar, MatchMakerSelectionLocationScreen screen)
@@ -221,41 +219,12 @@ namespace SPTForecaster
             }
         }
 
-        /// <summary>
-        /// Keep the key clear of the time bar and the forecast box, which sit over the map's bottom edge:
-        /// in the corner it was hidden behind the box (2026-10-29). When either overlaps the corner, the key
-        /// (and the playback readout over it) moves up to sit just above the highest of them, right-aligned
-        /// with it.
-        /// </summary>
+        /// <summary>Follow the forecast box: into it when it shows, back onto the radar when it goes.</summary>
         private void Place()
         {
             if (_radarRect == null || _keyRect == null) return;
             var slot = ForecastPanel.KeySlot();
             if (slot != _dock) Dock(slot);
-            if (_dock != null) return;
-
-            var area = _radarRect.rect;
-            var keyWidth = _keyRect.rect.width;
-            float right = area.xMax - Margin, bottom = area.yMin + Margin;
-            var shift = Vector2.zero;
-            foreach (var cover in ForecastPanel.Covering())
-            {
-                cover.GetWorldCorners(Corners);
-                Vector2 min = _radarRect.InverseTransformPoint(Corners[0]), max = _radarRect.InverseTransformPoint(Corners[2]);
-                // Only something low on the map, across the key's corner (not a full-screen container).
-                if (max.y - min.y > area.height * 0.5f || max.y < bottom) continue;
-                var keyRight = right + shift.x;
-                if (max.x < keyRight - keyWidth || min.x > keyRight) continue;
-                var up = max.y + 6f - bottom;
-                if (up <= shift.y) continue;
-                shift.y = up;
-                shift.x = Mathf.Min(0f, max.x - right);
-            }
-
-            if ((shift - _shift).sqrMagnitude < 0.25f) return;
-            _shift = shift;
-            _keyRect.anchoredPosition = new Vector2(-Margin, Margin) + shift;
-            if (_readoutRect != null) _readoutRect.anchoredPosition = new Vector2(-Margin, Margin + _readoutOffset) + shift;
         }
 
         private void OnDestroy()
@@ -296,9 +265,9 @@ namespace SPTForecaster
             _readoutColumn.padding = docked ? NoPadding : _readoutPadding;
             if (!docked)
             {
+                _keyRect.anchoredPosition = new Vector2(-Margin, Margin);
+                _readoutRect.anchoredPosition = new Vector2(-Margin, Margin + _readoutOffset);
                 _readoutRect.sizeDelta = new Vector2(_readoutWidth, 0f);
-                _shift = new Vector2(float.NaN, 0f); // place again on the corner
-                _nextPlace = 0f;                      // next frame, once the box is gone
             }
 
             _lastMinute = -1;

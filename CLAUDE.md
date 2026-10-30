@@ -129,6 +129,15 @@ look at 0.2.1:
   - FogSix and Return Of Thunderstorms compatibility (see Compatibility).
   None of this has been through a full test raid yet beyond the reverb and the log checks.
 
+- **Release clean-up (2026-10-30), versioned 0.3.0:** the flash's tint on the TOD light is now taken from
+  and restored to the game's colour (it lerped from the already-tinted colour each frame and was never put
+  back); `Field` caches carry a generation so a worker render started before a seed/season/forced-pattern
+  change can't store stale cells; the WAV parser stops on a negative chunk size; the server's version lives
+  only in `ModMetadata.VersionText` (router, start-up log and pack.ps1 read it) and the client warns once if
+  the server's differs; "Log weather details" defaults off; the key's corner-dodging code (`Place`,
+  `ForecastPanel.Covering`) removed, since undocked the key is hidden anyway; UnityWebRequestAudio
+  reference dropped. Built to dist, not installed (game was running), not run in game.
+
 ## Earlier: the home test of 0.2.1
 
 0.2.1 (2026-10-29) reworks the lightning flash (see Thunderstorms; 0.2.0's flash added to TOD's light

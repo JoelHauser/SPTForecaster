@@ -31,7 +31,8 @@ namespace SPTForecaster
 
         public static void Attach(LocationConditionsPanel panel, RaidSettings raidSettings)
         {
-            var fp = panel.GetComponent<ForecastPanel>() ?? panel.gameObject.AddComponent<ForecastPanel>();
+            var fp = panel.GetComponent<ForecastPanel>();
+            if (fp == null) fp = panel.gameObject.AddComponent<ForecastPanel>();
             fp._panel = panel;
             fp._location = raidSettings?.SelectedLocation;
             Maps.Remember(fp._location);
@@ -45,21 +46,6 @@ namespace SPTForecaster
             foreach (var fp in Live)
             {
                 if (fp != null) fp.Refresh(rebuildLayout: true);
-            }
-        }
-
-        /// <summary>
-        /// What sits over the map's bottom edge: each live time panel, and the forecast box on top of it
-        /// when it shows. The radar key keeps clear of these.
-        /// </summary>
-        public static IEnumerable<RectTransform> Covering()
-        {
-            foreach (var fp in Live)
-            {
-                if (fp == null || fp._panel == null || !fp._panel.gameObject.activeInHierarchy) continue;
-                yield return (RectTransform)fp._panel.transform;
-                var box = fp._view?.Rect;
-                if (box != null) yield return box;
             }
         }
 

@@ -40,7 +40,7 @@ $versions = @(
     ([xml](Get-Content $client)).Project.PropertyGroup.Version | Where-Object { $_ }
     ([xml](Get-Content $server)).Project.PropertyGroup.Version | Where-Object { $_ }
     (Select-String -Path (Join-Path $root 'src\SPTForecaster\ForecasterPlugin.cs') -Pattern 'PluginVersion\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-    (Select-String -Path (Join-Path $root 'src\SPTForecaster.Server\ModMetadata.cs') -Pattern 'new\("(\d+\.\d+\.\d+)"\)').Matches[0].Groups[1].Value
+    (Select-String -Path (Join-Path $root 'src\SPTForecaster.Server\ModMetadata.cs') -Pattern 'VersionText\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 )
 if (($versions | Select-Object -Unique).Count -ne 1) {
     throw "Version mismatch: $($versions -join ', ')"

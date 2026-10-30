@@ -13,8 +13,8 @@ namespace SPTForecaster
     /// height, and is drawn as a second copy of that bar:
     ///
     ///   FORECAST FOR THE 20:30 RAID:
-    ///   ☀  Clear                         ☁ Clouds building in ~25 min
-    ///      Calm                          ☁ Fog arriving in ~70 min
+    ///   ☀  Clear                         RAID START ━━━━━━━━━━━━
+    ///      Calm                          RAIN ● ● ● ●  FOG ● ● ● ●  CLOUD ● ●
     ///
     /// The bar's own colour and striped image behind it, its "SELECT TIME PHASE:" label style and inset for
     /// the heading, the clock's font and colour for the weather, and the game's weather icons
@@ -193,7 +193,8 @@ namespace SPTForecaster
         /// <summary>Half the row, whatever its content wants.</summary>
         private static void Half(GameObject go)
         {
-            var size = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
+            var size = go.GetComponent<LayoutElement>();
+            if (size == null) size = go.AddComponent<LayoutElement>();
             size.minWidth = 0f;
             size.preferredWidth = 0f;
             size.flexibleWidth = 1f;

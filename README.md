@@ -2,7 +2,7 @@
 
 A weather forecast and live weather radar for SPT's map select screen. Each map gets its own weather, and what the forecast says is what you get in the raid.
 
-**Status: 0.2.2, test build.** Requires SPT 4.1. The radar, forecast, lightning and thunder have been tested in game. Seasons, fog strengths and blizzards have not been tested in game yet.
+**Status: 0.3.0.** Requires SPT 4.1. The radar, forecast, lightning and thunder have been tested in game. Seasons, fog strengths and blizzards have not been tested in game yet.
 
 ## What it does
 
@@ -29,11 +29,13 @@ Download `SPTForecaster-<version>.zip` from [Releases](https://github.com/JoelHa
 - **Forecast:** show the forecast, make raid weather follow it, and set fog thickness.
 - **Radar:** show the radar and its key, set opacity, and turn raid playback on or off.
 - **Storms:** turn lightning and thunder on or off, and set lightning brightness and thunder volume.
-- **Debug:** log the weather, force a weather pattern, preview hours ahead, force a thunderstorm, and strike lightning, a flash or thunder on demand.
+- **Debug** (advanced settings only): log the weather, force a weather pattern, preview hours ahead, force a thunderstorm, and strike lightning, a flash or thunder on demand.
 
 ## Works with
 
 - [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast and light up with lightning.
+- TraceSix and FogSix: lightning works with TraceSix's lighting and stays out of FogSix's fog shadows.
+- Return Of Thunderstorms: its storms, wind and flickering lamps follow the forecast's thunderstorms, and the thunder is the forecast's.
 - [TimeWeatherChanger](https://gitlab.com/flir063-spt/timeweatherchanger): its settings take over while switched on, and the forecast's weather comes back when you switch them off.
 - [Deploy Screen Overhaul](https://github.com/JoelHauser/LoadingRaid): it lights your PMC to match the raid's weather.
 - [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): its faction map shows through under the radar.

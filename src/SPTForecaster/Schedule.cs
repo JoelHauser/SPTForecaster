@@ -51,6 +51,7 @@ namespace SPTForecaster
         private static float _failedAt = -1000f;
         private static bool _ready;
         private static bool _warned;
+        private static bool _versionChecked;
 
         public static double Acceleration { get; private set; } = 7;
 
@@ -97,6 +98,7 @@ namespace SPTForecaster
                 Season = json.Value<int?>("season") ?? 0;
                 Field.Season = Season;
                 Field.Seed = json.Value<int>("seed");
+                CheckServerVersion(json.Value<string>("version"));
                 _ready = true;
                 _fetchedAt = Time.realtimeSinceStartup;
                 _warned = false;
@@ -110,6 +112,15 @@ namespace SPTForecaster
                     ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the SPTForecaster " + ForecasterPlugin.PluginVersion + " server mod installed?");
                 }
             }
+        }
+
+        /// <summary>Once: a server half from another release may build different weather than this client draws.</summary>
+        private static void CheckServerVersion(string server)
+        {
+            if (_versionChecked) return;
+            _versionChecked = true;
+            if (server == null || server == ForecasterPlugin.PluginVersion) return;
+            ForecasterPlugin.Log.LogWarning($"The SPTForecaster server mod is {server}, this client plugin is {ForecasterPlugin.PluginVersion}. Install both from the same release.");
         }
 
         public static bool IsNight(double tarkovSeconds)

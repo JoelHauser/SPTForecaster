@@ -45,7 +45,8 @@ namespace SPTForecaster
 
             var weather = WeatherController.Instance;
             if (weather == null) return;
-            var driver = weather.GetComponent<BlizzardDriver>() ?? weather.gameObject.AddComponent<BlizzardDriver>();
+            var driver = weather.GetComponent<BlizzardDriver>();
+            if (driver == null) driver = weather.gameObject.AddComponent<BlizzardDriver>();
             driver._factor = 0f;
             if (ForecasterPlugin.VerboseLog.Value && Spans.Count > 0)
             {

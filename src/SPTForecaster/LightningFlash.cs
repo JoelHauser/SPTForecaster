@@ -47,11 +47,13 @@ namespace SPTForecaster
         private static bool _hooked;
         private static int _frame = -1;
 
-        // The light's intensity and direction as the game last set them, and as we last wrote them. Below
-        // shadow quality 3, TOD sets the direction only every second or so, so it has to be put back too.
+        // The light's intensity, direction and colour as the game last set them, and as we last wrote them.
+        // Below shadow quality 3, TOD sets the direction only every second or so, so it has to be put back too;
+        // the colour likewise, or each frame's tint would build on the last.
         private static Light _light;
         private static float _base, _written;
         private static Quaternion _baseRotation, _writtenRotation;
+        private static Color _baseColor, _writtenColor;
         private static bool _holding;
 
         private static bool? _traceSix;
@@ -230,6 +232,7 @@ namespace SPTForecaster
             var turn = light.transform;
             if (!_holding || light != _light || !Mathf.Approximately(light.intensity, _written)) _base = light.intensity;
             if (!_holding || light != _light || Quaternion.Angle(turn.rotation, _writtenRotation) > 0.01f) _baseRotation = turn.rotation;
+            if (!_holding || light != _light || light.color != _writtenColor) _baseColor = light.color;
             _light = light;
 
             var tracing = TraceSixLighting;
@@ -253,9 +256,10 @@ namespace SPTForecaster
                 var add = lit * DirectPeak;
                 var share = add / (_base + add + 0.001f);
                 light.intensity = _base + add;
-                light.color = Color.Lerp(light.color, Tint, share);
+                light.color = Color.Lerp(_baseColor, Tint, share);
                 turn.rotation = Quaternion.Slerp(_baseRotation, Overhead, share);
                 _written = light.intensity;
+                _writtenColor = light.color;
                 _writtenRotation = turn.rotation;
                 _holding = true;
             }
@@ -277,13 +281,14 @@ namespace SPTForecaster
             }
         }
 
-        /// <summary>The flash is over: give the light back the game's intensity.</summary>
+        /// <summary>The flash is over: give the light back the game's intensity, direction and colour.</summary>
         private static void Release()
         {
             if (_holding && _light != null)
             {
                 _light.intensity = _base;
                 _light.transform.rotation = _baseRotation;
+                _light.color = _baseColor;
             }
 
             _holding = false;
