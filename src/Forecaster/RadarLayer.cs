@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// The radar on the location screen: a RawImage the size of the location buttons' container, placed
@@ -191,7 +191,7 @@ namespace SPTForecaster
             {
                 if (buttons == null || buttons.parent == null) return;
                 var parent = buttons.parent;
-                var existing = parent.Find("SPTForecasterRadar");
+                var existing = parent.Find("ForecasterRadar");
                 if (existing != null)
                 {
                     _live = existing.GetComponent<RadarLayer>();
@@ -199,7 +199,7 @@ namespace SPTForecaster
                     return;
                 }
 
-                var go = new GameObject("SPTForecasterRadar", typeof(RectTransform));
+                var go = new GameObject("ForecasterRadar", typeof(RectTransform));
                 go.transform.SetParent(parent, false);
                 var rt = (RectTransform)go.transform;
                 var src = (RectTransform)buttons;

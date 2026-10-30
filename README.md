@@ -1,47 +1,57 @@
-# SPTForecaster
+# Forecaster
 
-A weather forecast and live weather radar for SPT's map select screen. Each map gets its own weather, and what the forecast says is what you get in the raid.
+A weather forecast and a live weather radar for SPT's map select screen. Every map has its own weather, and the raid gets the weather the forecast showed.
 
-**Status: 0.3.0.** Requires SPT 4.1. The radar, forecast, lightning and thunder have been tested in game. Seasons, fog strengths and blizzards have not been tested in game yet.
+Requires SPT 4.1.
 
-## What it does
+## What you get
 
-- **Weather radar.** A radar over the map shows rain, snow, fog and cloud moving across the region with the wind, mostly from the west and south-west.
-- **Raid playback.** Pick a map and a time, and the radar plays out the weather for the length of that raid.
-- **Forecast.** A box above the time bar shows the weather when the raid starts and the wind, with the radar's key and the raid playback slider beside it. It uses the game's own fonts and icons.
-- **Weather that matches.** The raid gets exactly the weather the forecast showed. Each map has its own weather, and the two time slots differ.
-- **Realistic weather.** Modelled on St Petersburg, near where Tarkov is set, and following your server's season. Clear and grey spells last, fronts bring rain, and fog forms on calm nights and burns off by midday. Not every raid has rain or fog.
+- **Weather radar.** Rain, snow, fog and cloud drift across the map screen with the wind.
+- **Raid playback.** Pick a map and a time, and the radar plays out the weather over the length of that raid.
+- **Forecast.** A box above the time bar shows the weather and wind at the start of the raid, with the radar's key and the playback slider beside it. It uses the game's own fonts and weather icons.
+- **Raid weather that matches.** You get the weather the forecast showed, changing during the raid when the radar showed it changing.
 - **New weather in raid:**
   - **Four fog strengths:** mist, fog, dense fog and thick fog.
   - **Winter blizzards:** the game's own driven snow.
-  - **Thunderstorms:** lightning flashes, then thunder. The thunder arrives later the further away the strike is. It's muffled indoors and silent in sealed places like the Reserve bunker.
-- **Follows your raid times.** It reads each map's raid length from your server.
-- **Stays the same across restarts.** The server saves the weather seed, so every player on the same server sees the same weather.
+  - **Thunderstorms:** lightning lights the sky and the ground, and the thunder arrives later, quieter and duller the further away the strike is. Indoors it rings in the room and is louder near windows. Sealed places like the Reserve bunker hear none of it.
 
-Factory, Labs and Labyrinth have no forecast.
+Factory, Labs, Labyrinth and Icebreaker have no forecast and keep SPT's weather.
+
+## How it works
+
+The server mod saves a weather seed. From that seed, your server's season and the in-game clock, the client works out the weather for the whole region: showers, fronts, storm cells and fog banks, moving with the wind. Each map reads the weather at its own spot, so neighbouring maps get similar but not identical weather, and the two time slots differ.
+
+The forecast, the radar and the raid all come from that one calculation, so they can't disagree. When you press Next or Ready, the raid's weather is locked in, so a long load can't move you into different weather.
+
+The weather is modelled on St Petersburg, near where Tarkov is set. Clear and grey spells last a while, fronts bring rain, storms mostly come from the west and south-west, and fog forms on calm nights and burns off by midday. Not every raid has rain or fog.
+
+The seed is saved on the server, so the weather survives restarts and everyone on the same server sees the same weather. The mod also reads each map's raid length from your server, so changed raid times are handled.
 
 ## Install
 
-Download `SPTForecaster-<version>.zip` from [Releases](https://github.com/JoelHauser/SPTForecaster/releases). Extract it into your SPT folder, the one with `EscapeFromTarkov.exe`. It adds a client plugin, a server mod and the thunder sounds, and both halves are needed.
+Download `Forecaster-<version>.zip` from [Releases](https://github.com/JoelHauser/SPTForecaster/releases) and extract it into your SPT folder, the one with `EscapeFromTarkov.exe`. It adds a client plugin, a server mod and the thunder sounds. Both halves are needed.
+
+**Updating from SPTForecaster (0.2.2 or earlier):** the mod is now called Forecaster. Install it, start the server once so it can copy your weather seed, then delete `BepInEx/plugins/SPTForecaster.dll`, the `BepInEx/plugins/SPTForecaster` folder and `SPT_Runtime/user/mods/SPTForecaster`. Your F12 settings start fresh.
 
 ## Settings (F12)
 
 - **Forecast:** show the forecast, make raid weather follow it, and set fog thickness.
 - **Radar:** show the radar and its key, set opacity, and turn raid playback on or off.
 - **Storms:** turn lightning and thunder on or off, and set lightning brightness and thunder volume.
-- **Debug** (advanced settings only): log the weather, force a weather pattern, preview hours ahead, force a thunderstorm, and strike lightning, a flash or thunder on demand.
+- **Debug** (shown with advanced settings): log the weather, force a weather pattern, preview hours ahead, force a thunderstorm, and strike lightning on demand.
 
 ## Works with
 
-- [CloudSix](https://github.com/matsixx/CloudSix): its clouds follow the forecast and light up with lightning.
-- TraceSix and FogSix: lightning works with TraceSix's lighting and stays out of FogSix's fog shadows.
-- Return Of Thunderstorms: its storms, wind and flickering lamps follow the forecast's thunderstorms, and the thunder is the forecast's.
-- [TimeWeatherChanger](https://gitlab.com/flir063-spt/timeweatherchanger): its settings take over while switched on, and the forecast's weather comes back when you switch them off.
-- [Deploy Screen Overhaul](https://github.com/JoelHauser/LoadingRaid): it lights your PMC to match the raid's weather.
-- [TushonkaTerritories](https://github.com/minesettimi/TushonkaTerritories): its faction map shows through under the radar.
+- [CloudSix](https://sp-mod.com/mod/2567/cloudsix-volumetric-clouds): its clouds follow the forecast and light up with lightning.
+- [TraceSix](https://sp-mod.com/mod/3221/tracesix-full-raytracing-and-voxel-gi): lightning uses its own light while TraceSix's lighting is on, so flashes show properly.
+- [FogSix](https://sp-mod.com/mod/3110/fogsix): lightning stays out of its fog shadows.
+- [Return Of Thunderstorms](https://sp-mod.com/mod/3236/return-of-thunderstorms): its storms, wind and flickering lamps follow the forecast's thunderstorms. Its heavy rain waits until the storm is overhead, and the thunder is the forecast's.
+- [Time & Weather Changer NG](https://sp-mod.com/mod/2120/time-weather-changer-ng): while its weather is switched on it takes over, and its thunder slider brings lightning. Switch it off and the forecast's weather comes back. Moving the clock keeps the forecast's weather for the new time.
+- [Deploy Screen Overhaul](https://sp-mod.com/mod/3047/deploy-screen-overhaul): it lights your PMC to match the raid's weather.
+- [Tushonka Territories](https://sp-mod.com/mod/2942/tushonka-territories): its faction map shows through under the radar.
 
-Fika co-op is untested.
+Other mods that set raid weather will fight with this one. To let them handle it, turn off **Raid weather follows the forecast** (the forecast may then be wrong). Fika co-op is untested, but every player on a server gets the same weather seed.
 
 ## Credits
 
-Thunder sounds are real recordings from Wikimedia Commons under CC BY / CC BY-SA or in the public domain. See [THUNDER_CREDITS.md](THUNDER_CREDITS.md).
+Thunder sounds are real recordings from Wikimedia Commons, under CC BY / CC BY-SA or in the public domain. See [THUNDER_CREDITS.md](THUNDER_CREDITS.md).

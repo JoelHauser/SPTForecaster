@@ -1,8 +1,8 @@
-# SPTForecaster -- working notes for Claude
+# Forecaster -- working notes for Claude
 
 Weather radar over SPT's location map, a forecast box on top of the time bar, and raid weather that matches
 both. Each map has its own weather, read from one storm field. Two halves: a BepInEx client plugin
-(`src/SPTForecaster`, net472) and an SPT 4.1 server mod (`src/SPTForecaster.Server`, net10.0). Repo
+(`src/Forecaster`, net472) and an SPT 4.1 server mod (`src/Forecaster.Server`, net10.0). Repo
 https://github.com/JoelHauser/SPTForecaster (public). README.md is a short user-facing summary; the design detail is here. Browser prototype the client's
 weather model is ported from: docs/radar-prototype.html (keep the two in step). **Out of step since
 0.2.2:** the C# field draws each cell's texture and ragged edge in the cell's own moving frame
@@ -46,7 +46,7 @@ look at 0.2.1:
   places them; slider reads "RAID START" between plays) and back to the radar corner when no box shows
   (Labs/Factory/no map). Joel then asked for no key at all without a box (seen over the time bar with no map
   picked): undocked, the strip and slider are hidden (alpha 0); only the ring stays on the map. Built, not
-  installed (game running). The RadarKey component lives on `SPTForecasterRadarKeyDriver` under the radar
+  installed (game running). The RadarKey component lives on `ForecasterRadarKeyDriver` under the radar
   so it keeps updating while the box is hidden. `ForecastResult.Changes` is still computed (log line).
   Installed 2026-10-29, not seen in game.
 - **Thunder silence solved (from the 0.2.2 log):** every play logged `(0.0 s, Loaded) ... playing False`:
@@ -98,7 +98,7 @@ look at 0.2.1:
   toggled off, it "looks good" (Joel). TraceSix's GI (config `1. General / Enabled`, flipped by its toggle
   key) replaces the game's sky ambient with light volumes filled over many frames, so the ambient (SH)
   flash got smeared. `LightningFlash` now reads that entry live: TraceSix lighting on -> no SH; the
-  ground is lit by our own directional light (`SPTForecasterLightning`, hard shadows, low-res, aimed
+  ground is lit by our own directional light (`ForecasterLightning`, hard shadows, low-res, aimed
   random bearing per strike via `LightningFlash.Aim`, as high as a 2 km cloud base over the strike:
   overhead ~80 deg, 3 km ~35, far 22; at a fixed 55-78 it only lit window sills, never the room), enabled only while the flash is
   above zero. TraceSix's volumes take only the game's sun and lamps, so it isn't smeared. Toggled off ->
@@ -159,8 +159,8 @@ weather model ran in a console harness (radar frames 3-11 ms, cards consistent w
 
 ## Building
 
-`scripts\pack.ps1 -SPTPath <install> [-Install]` builds both halves and writes `dist\SPTForecaster-<v>.zip`
-(only `BepInEx/plugins/SPTForecaster.dll` and `SPT_Runtime/user/mods/SPTForecaster/SPTForecaster.Server.dll`).
+`scripts\pack.ps1 -SPTPath <install> [-Install]` builds both halves and writes `dist\Forecaster-<v>.zip`
+(only `BepInEx/plugins/Forecaster.dll` and `SPT_Runtime/user/mods/Forecaster/Forecaster.Server.dll`).
 The version lives in several places (both csproj, PluginVersion, ModMetadata, the router's `version`,
 Startup's log line); the script checks the first four agree. On the home machine:
 `scripts\pack.ps1 -SPTPath H:\SPT4.1.X -Install`.
@@ -176,7 +176,7 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
 - **Tarkov seconds.** The clock everything uses: real Unix seconds × acceleration (weather.json, 7) + 3 h.
   Its time of day is the game's Tarkov clock (server `WeatherHelper.GetInRaidTime`). Right slot = +12 h.
 - **Server** (`WeatherSeed`, `ForecastRouter`): one random seed, saved to `weather-seed.json` next to the
-  DLL. Route `/sptforecaster/field` returns version, seed, season (server enum; 2 = winter) and
+  DLL. Route `/forecaster/field` returns version, seed, season (server enum; 2 = winter) and
   acceleration. Vanilla's own weather routes are untouched.
 - **Patterns** (2026-10-29, Joel: "doesn't always need to be rain or fog just for the sake of weather";
   seasons should shape it): a Markov chain over 8-hour periods (fair, grey = "Overcast", unsettled =
@@ -200,7 +200,7 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
   thick fog ~0.8 % of autumn raids. `BlizzardDriver` (on WeatherController's GameObject, Winter only)
   eases `RainController._snowFlakes.StormFactor` 0..1 over 40 real s centred on block boundaries and sets
   `_snowWetRenderer.StormEnabled` above 0.5; the Storm season is left to the game.
-- **Glyphs** (`Glyphs.cs`, PNGs in src/SPTForecaster/Glyphs embedded as SPTForecaster.Glyphs.<Name>.png,
+- **Glyphs** (`Glyphs.cs`, PNGs in src/Forecaster/Glyphs embedded as Forecaster.Glyphs.<Name>.png,
   drawn by tools/glyphs.py): LightSnow, Snow, HeavySnow, Blizzard, Mist, DenseFog, ThickFog, ClearNight,
   PartlyCloudNight, ClearFogNight. Style measured from the game's sprites (extracted with UnityPy from
   resources.assets for comparison only, never shipped): colour 125,123,111, ~3.3 px strokes at 48 px,
@@ -228,7 +228,7 @@ Then `ilspycmd -il` the client DLL: no `_E…`/`_F…` names. The source names n
   and portals), silent in rooms with OutdoorAmbientVolume ~0. TimeWeatherChanger's thunder slider drives an
   overhead storm while its override is on. Clips: assets/thunder (12, 4 near / 8 far), cut by
   tools/thunder_clips.py from Commons recordings (THUNDER_CREDITS.md; CC BY / CC BY-SA), loaded with
-  UnityWebRequestMultimedia from BepInEx/plugins/SPTForecaster/thunder. Config section Storms.
+  UnityWebRequestMultimedia from BepInEx/plugins/Forecaster/thunder. Config section Storms.
   Unchecked in game: flash look (day vs night), mixer group muffling, bunker silence, CPU. Not synced in Fika.
 - **Raid lengths differ per server** (Joel, 2026-10-29): `Maps.RaidMinutes(id)` (EscapeTimeLimit, learnt with
   the icons). The card and playback use the panel's location; `SetWeatherNodesPatch` builds nodes to
@@ -443,8 +443,8 @@ and finds lamps only during its storm). Its release zip nests everything under `
 
 ## What the first test has to look at
 
-1. Server console: `[SPTForecaster] 0.2.1 loaded, weather seed ready.` BepInEx log:
-   `SPTForecaster 0.2.1 loaded.`, `Thunder: 4 near and 8 far clips loaded.`, `Radar attached under '...' at sibling N, size WxH`, no "Could not ...".
+1. Server console: `[Forecaster] 0.2.1 loaded, weather seed ready.` BepInEx log:
+   `Forecaster 0.2.1 loaded.`, `Thunder: 4 near and 8 far clips loaded.`, `Radar attached under '...' at sibling N, size WxH`, no "Could not ...".
 2. Radar on the map: lined up with the buttons? Above the map art, below the buttons and route lines?
    Light rain see-through? With TushonkaTerritories, its colours visible underneath? F12 opacity works?
    Any hitch when it redraws (every 5 s)?
@@ -474,3 +474,12 @@ and finds lamps only during its storm). Its release zip nests everything under `
 15. TimeWeatherChanger: its weather overrides ours and hands back; moving the time keeps the weather sane;
     its thunder slider makes lightning.
 16. CPU/hitches while thunder and playback run.
+
+## 1.0.0 (2026-10-30)
+
+Renamed SPTForecaster -> Forecaster: GUID `com.mybutthasarash.forecaster`, assemblies/namespaces `Forecaster` and
+`Forecaster.Server`, route `/forecaster/field`, client in `BepInEx/plugins/Forecaster/` (thunder/ beside the DLL),
+server in `user/mods/Forecaster/` (copies `weather-seed.json` from `user/mods/SPTForecaster` when it has none). Both
+halves warn when the old SPTForecaster is still installed. The GitHub repo keeps the name SPTForecaster. Server
+start-up is one ASCII line (the console font has no block characters). Deploy Screen Overhaul's public 1.1.0 never
+had the Forecaster hookup; Joel chose not to update it.

@@ -1,5 +1,5 @@
 """
-Draws SPTForecaster's own weather glyphs (src/SPTForecaster/Glyphs/*.png) for weather the game has no icon
+Draws Forecaster's own weather glyphs (src/Forecaster/Glyphs/*.png) for weather the game has no icon
 for: snow, blizzard, each fog strength, and night skies (the game names night icons it doesn't ship).
 
 They copy the look of the game's UI/WeatherIcons, measured from the game's sprites, without using any of
@@ -15,7 +15,7 @@ from PIL import Image, ImageChops, ImageDraw
 S = 8                       # supersampling
 COLOUR = (125, 123, 111)
 STROKE = 3.3
-OUT = os.path.join(os.path.dirname(__file__), "..", "src", "SPTForecaster", "Glyphs")
+OUT = os.path.join(os.path.dirname(__file__), "..", "src", "Forecaster", "Glyphs")
 
 
 def canvas(w, h):

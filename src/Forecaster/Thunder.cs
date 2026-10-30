@@ -13,7 +13,7 @@ using UnityEngine;
 using UnityEngine.Audio;
 using Random = UnityEngine.Random;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Lightning and thunder in a raid, while a thunderstorm is over the map or near it (the game has none:
@@ -58,12 +58,12 @@ namespace SPTForecaster
 
         // ---- clips -----------------------------------------------------------------------------------
 
-        /// <summary>Loads the thunder clips (BepInEx/plugins/SPTForecaster/thunder/*.wav) once, in the background.</summary>
+        /// <summary>Loads the thunder clips (thunder/*.wav next to the plugin, in BepInEx/plugins/Forecaster) once, in the background.</summary>
         public static void LoadClips(MonoBehaviour host, string pluginDir)
         {
             if (_loading) return;
             _loading = true;
-            host.StartCoroutine(LoadAll(Path.Combine(Path.Combine(pluginDir, "SPTForecaster"), "thunder")));
+            host.StartCoroutine(LoadAll(Path.Combine(pluginDir, "thunder")));
         }
 
         /// <summary>
@@ -212,7 +212,7 @@ namespace SPTForecaster
         // ---- the raid's storms -----------------------------------------------------------------------
 
         /// <summary>The thunder sources' name (Return Of Thunderstorms' rain volume control skips it).</summary>
-        internal const string SourceName = "SPTForecasterThunder";
+        internal const string SourceName = "ForecasterThunder";
 
         /// <summary>This raid runs on the forecast's weather (set with its nodes, cleared when the raid ends).</summary>
         internal static bool ForecastRaid;

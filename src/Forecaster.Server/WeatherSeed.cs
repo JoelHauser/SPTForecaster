@@ -4,7 +4,7 @@ using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.Models.Spt.Config;
 using SPTarkov.Server.Core.Services.Server;
 
-namespace SPTForecaster.Server;
+namespace Forecaster.Server;
 
 /// <summary>
 /// The seed the client builds all weather from (storms, patterns, every map's conditions), with the
@@ -40,40 +40,54 @@ public class WeatherSeed(SeasonalEventService seasonalEventService, WeatherConfi
             var dir = Path.GetDirectoryName(typeof(WeatherSeed).Assembly.Location);
             if (string.IsNullOrEmpty(dir))
             {
-                dir = Path.Combine(AppContext.BaseDirectory, "user", "mods", "SPTForecaster");
+                dir = Path.Combine(AppContext.BaseDirectory, "user", "mods", "Forecaster");
             }
 
             return Path.Combine(dir, "weather-seed.json");
         }
     }
 
+    /// <summary>Where SPTForecaster (0.2.2 and earlier, before the rename) saved its seed: user/mods/SPTForecaster.</summary>
+    private static string OldFilePath => Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(FilePath)) ?? "", "SPTForecaster", "weather-seed.json");
+
     private int LoadOrCreate()
     {
         try
         {
-            if (File.Exists(FilePath))
+            if (File.Exists(FilePath)) return Read(FilePath);
+            if (File.Exists(OldFilePath))
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(FilePath));
-                var saved = doc.RootElement.GetProperty("seed").GetInt32();
-                logger.Info($"[SPTForecaster] Loaded the saved weather seed.");
-                return saved;
+                // Carried over from SPTForecaster, so the rename doesn't change anyone's weather.
+                var carried = Read(OldFilePath);
+                Save(carried);
+                return carried;
             }
         }
         catch (Exception ex)
         {
-            logger.Warning($"[SPTForecaster] Could not read the saved weather seed, rolling a new one: {ex.Message}");
+            logger.Warning($"[Forecaster] Could not read the saved weather seed, rolling a new one: {ex.Message}");
         }
 
         var seed = Random.Shared.Next(1, int.MaxValue);
+        Save(seed);
+        return seed;
+    }
+
+    private static int Read(string path)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        return doc.RootElement.GetProperty("seed").GetInt32();
+    }
+
+    private void Save(int seed)
+    {
         try
         {
             File.WriteAllText(FilePath, JsonSerializer.Serialize(new { seed }));
         }
         catch (Exception ex)
         {
-            logger.Warning($"[SPTForecaster] Could not save the weather seed; the weather will change on restart: {ex.Message}");
+            logger.Warning($"[Forecaster] Could not save the weather seed; the weather will change on restart: {ex.Message}");
         }
-
-        return seed;
     }
 }

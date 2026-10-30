@@ -3,13 +3,13 @@
   <PropertyGroup>
     <!-- net472 because that is what the game's mono runtime loads. -->
     <TargetFramework>net472</TargetFramework>
-    <RootNamespace>SPTForecaster</RootNamespace>
-    <AssemblyName>SPTForecaster</AssemblyName>
+    <RootNamespace>Forecaster</RootNamespace>
+    <AssemblyName>Forecaster</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
 
     <!-- Must match ForecasterPlugin.PluginVersion. -->
-    <Version>0.3.0</Version>
+    <Version>1.0.0</Version>
 
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -56,8 +56,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Our own weather glyphs (drawn by tools/glyphs.py), loaded by Glyphs.cs as SPTForecaster.Glyphs.<Name>.png. -->
-    <EmbeddedResource Include="Glyphs\*.png" LogicalName="SPTForecaster.Glyphs.%(Filename)%(Extension)" />
+    <!-- Our own weather glyphs (drawn by tools/glyphs.py), loaded by Glyphs.cs as Forecaster.Glyphs.<Name>.png. -->
+    <EmbeddedResource Include="Glyphs\*.png" LogicalName="Forecaster.Glyphs.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

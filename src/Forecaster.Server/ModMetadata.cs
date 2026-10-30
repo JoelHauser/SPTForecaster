@@ -1,16 +1,16 @@
 using SPTarkov.Server.Core.Models.Spt.Mod;
 
-namespace SPTForecaster.Server;
+namespace Forecaster.Server;
 
 public record ModMetadata : IModMetadata
 {
     /// <summary>The one place the server half names its version; must match the csproj and the client's PluginVersion.</summary>
-    public const string VersionText = "0.3.0";
+    public const string VersionText = "1.0.0";
 
     /// <summary>The same GUID the client plugin declares.</summary>
-    public string ModGuid { get; init; } = "com.mybutthasarash.sptforecaster";
+    public string ModGuid { get; init; } = "com.mybutthasarash.forecaster";
 
-    public string Name { get; init; } = "SPTForecaster";
+    public string Name { get; init; } = "Forecaster";
 
     public string Author { get; init; } = "JoelHauser";
 

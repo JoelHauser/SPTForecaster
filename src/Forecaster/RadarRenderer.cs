@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Draws the field as weather radar into a pixel buffer. Pure maths, no Unity objects, so it runs on a

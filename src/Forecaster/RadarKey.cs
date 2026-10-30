@@ -4,7 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// The radar's key, in the forecast box's right half under the playback slider (Joel's layout,
@@ -23,7 +23,7 @@ namespace SPTForecaster
     /// </summary>
     internal sealed class RadarKey : MonoBehaviour
     {
-        private const string Name = "SPTForecasterRadarKey";
+        private const string Name = "ForecasterRadarKey";
         private const float Margin = 12f;
 
         /// <summary>The time bar's colour as drawn, as the forecast box uses.</summary>
@@ -96,7 +96,7 @@ namespace SPTForecaster
 
                 // The component sits on its own object that stays on the radar: the strip itself moves into
                 // the forecast box, which hides with it, and a hidden object gets no Update to move back out.
-                var driver = new GameObject("SPTForecasterRadarKeyDriver", typeof(RectTransform));
+                var driver = new GameObject("ForecasterRadarKeyDriver", typeof(RectTransform));
                 driver.transform.SetParent(radar, false);
                 driver.AddComponent<LayoutElement>().ignoreLayout = true;
                 var key = driver.AddComponent<RadarKey>();
@@ -139,7 +139,7 @@ namespace SPTForecaster
             var width = keyRect.rect.width > size * 6f ? keyRect.rect.width : size * 12f;
             var keyHeight = size * 1.3f + 2 * Mathf.RoundToInt(pad * 0.6f);
 
-            var go = new GameObject("SPTForecasterRadarPlayback", typeof(RectTransform));
+            var go = new GameObject("ForecasterRadarPlayback", typeof(RectTransform));
             go.transform.SetParent(radar, false);
             go.AddComponent<LayoutElement>().ignoreLayout = true;
             var rt = (RectTransform)go.transform;

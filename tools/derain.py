@@ -1,5 +1,5 @@
 """
-Takes the rain out of SPTForecaster's thunder clips. Most of the source recordings were made in the storm, so
+Takes the rain out of Forecaster's thunder clips. Most of the source recordings were made in the storm, so
 the clips carry their own rain hiss under the thunder, and in game that played on top of the game's own rain
 (Joel, 2026-10-29: "dual rain noises").
 

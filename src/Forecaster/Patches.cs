@@ -10,7 +10,7 @@ using JsonType;
 using SPT.Reflection.Patching;
 using UnityEngine;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>The location screen opens: learn every location's map position, and put the radar on the map.</summary>
     internal sealed class LocationScreenShowPatch : ModulePatch
@@ -31,7 +31,7 @@ namespace SPTForecaster
                 // falls back to the remembered slot at the current time.
                 RadarLayer.TargetTime = null;
                 RadarLayer.Attach(__instance._locationButtonsContainer, __instance._locationPathsContainer);
-                RadarKey.Attach(__instance._locationButtonsContainer?.parent?.Find("SPTForecasterRadar"), __instance);
+                RadarKey.Attach(__instance._locationButtonsContainer?.parent?.Find("ForecasterRadar"), __instance);
 
                 // The game selects the last map before it shows the screen, so the forecast was first set up
                 // while the screen was hidden: the toggles read as inactive (always the left slot) and the bar's

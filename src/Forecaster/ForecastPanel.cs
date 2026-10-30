@@ -9,7 +9,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Lives on the location screen's LocationConditionsPanel and keeps the selected time slot's forecast

@@ -7,7 +7,7 @@ using SPT.Reflection.Patching;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Draws Thunder.Flash (0 none, about 1 a strike overhead) into the scene, the way lightning lights a
@@ -123,7 +123,7 @@ namespace SPTForecaster
 
             if (_own == null)
             {
-                var go = new GameObject("SPTForecasterLightning");
+                var go = new GameObject("ForecasterLightning");
                 _own = go.AddComponent<Light>();
                 _own.type = LightType.Directional;
                 _own.color = Tint;

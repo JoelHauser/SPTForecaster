@@ -4,7 +4,7 @@ using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Utils;
 
-namespace SPTForecaster.Server;
+namespace Forecaster.Server;
 
 /// <summary>
 /// One route: the weather seed, season and time acceleration. The client builds the forecast, the radar
@@ -16,7 +16,7 @@ public class ForecastRouter(JsonUtil jsonUtil, WeatherSeed weather)
         jsonUtil,
         [
             new RouteAction<EmptyRequestData>(
-                "/sptforecaster/field",
+                "/forecaster/field",
                 async (url, info, sessionId, output, cancellationToken) =>
                     await ValueTask.FromResult(Respond(weather))),
         ])

@@ -1,7 +1,7 @@
 using System;
 using EFT.Weather;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// For other mods. With the forecast driving raid weather, the session's own weather (what vanilla
@@ -9,7 +9,7 @@ namespace SPTForecaster
     /// the coming raid should ask here first.
     ///
     /// Call it by reflection, so there is no hard dependency:
-    /// <c>AccessTools.Method("SPTForecaster.ForecasterApi:RaidWeather")?.Invoke(null, new object[] { locationId })</c>
+    /// <c>AccessTools.Method("Forecaster.ForecasterApi:RaidWeather")?.Invoke(null, new object[] { locationId })</c>
     /// Deploy Screen Overhaul (github.com/JoelHauser/LoadingRaid) does, to light the PMC for the raid's weather.
     /// </summary>
     public static class ForecasterApi

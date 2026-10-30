@@ -3,11 +3,12 @@ using SPTarkov.Server.Core.DI;
 using SPTarkov.Common.Models.Logging;
 using Spectre.Console;
 
-namespace SPTForecaster.Server;
+namespace Forecaster.Server;
 
 /// <summary>
-/// Loads (or rolls) the weather seed at start, then says so in one line: a little radar bar in the radar's
-/// rain colours (light rain to the heaviest cores, as the key shows them), the name and the season.
+/// Loads (or rolls) the weather seed at start, then says so in one line: the name in the radar's light
+/// snow blue, the rest in grey. Plain ASCII only: the server console's font has no block characters
+/// (a radar bar of them came out as boxes, 2026-10-30).
 ///
 /// It goes straight to Spectre.Console's AnsiConsole, the console SPT's own logger writes to, since
 /// ISptLogger escapes markup and allows one colour per line. If drawing fails, a plain line goes through
@@ -16,11 +17,6 @@ namespace SPTForecaster.Server;
 [Injectable(TypePriority = OnLoadOrder.PostLoad)]
 public class Startup(WeatherSeed weather, ISptLogger<Startup> logger) : IOnLoad
 {
-    /// <summary>The client's RadarRenderer.RainColours, up to the peak and back down: a storm cell passing.</summary>
-    private static readonly string[] Radar = ["#56BE5C", "#ECD03A", "#E86828", "#C41C5C", "#E86828", "#ECD03A", "#56BE5C"];
-
-    private static readonly string[] Bars = ["▂", "▃", "▅", "▇", "▅", "▃", "▂"];
-
     /// <summary>SPT's Season enum, in order.</summary>
     private static readonly string[] Seasons = ["summer", "autumn", "winter", "spring", "late autumn", "early spring", "storm season"];
 
@@ -30,13 +26,19 @@ public class Startup(WeatherSeed weather, ISptLogger<Startup> logger) : IOnLoad
         var season = weather.Season is >= 0 and < 7 ? Seasons[weather.Season] : "unknown season";
         try
         {
-            var bar = string.Concat(Bars.Select((b, i) => $"[{Radar[i]}]{b}[/]"));
             AnsiConsole.Console.MarkupLine(
-                $" {bar} [bold #A8CEF6]SPTForecaster[/] [grey]{Markup.Escape(ModMetadata.VersionText)} · weather seed ready · {season}[/]");
+                $"[bold #A8CEF6][[Forecaster]][/] [grey]{Markup.Escape(ModMetadata.VersionText)} loaded, weather seed ready, {season}[/]");
         }
         catch (Exception)
         {
-            logger.Success($"[SPTForecaster] {ModMetadata.VersionText} loaded, weather seed ready ({season}).");
+            logger.Success($"[Forecaster] {ModMetadata.VersionText} loaded, weather seed ready, {season}");
+        }
+
+        // SPTForecaster (before the rename) would run alongside this one.
+        if (File.Exists(Path.Combine(AppContext.BaseDirectory, "user", "mods", "SPTForecaster", "SPTForecaster.Server.dll")))
+        {
+            logger.Warning("[Forecaster] The old SPTForecaster server mod is still installed. Remove SPT_Runtime/user/mods/SPTForecaster "
+                           + "(Forecaster has already copied its weather seed).");
         }
 
         return Task.CompletedTask;

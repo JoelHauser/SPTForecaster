@@ -1,4 +1,4 @@
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Read by the F12 configuration manager (and BetterBepInEx, which uses its setting list) from a setting's

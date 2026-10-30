@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// The weather as a field over the region, from one seed. Ported from docs/radar-prototype.html; the

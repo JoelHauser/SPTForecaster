@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds both halves of SPTForecaster and zips them for release.
+    Builds both halves of Forecaster and zips them for release.
 
 .PARAMETER SPTPath
     An SPT install root whose Assembly-CSharp has been patched by the SPT Launcher (it keeps the
@@ -31,16 +31,16 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $SptPluginsPath) { $SptPluginsPath = Join-Path $SPTPath 'BepInEx\plugins\spt' }
 if (-not $ServerPath) { $ServerPath = $SPTPath }
 
-$client = Join-Path $root 'src\SPTForecaster\SPTForecaster.csproj'
-$server = Join-Path $root 'src\SPTForecaster.Server\SPTForecaster.Server.csproj'
+$client = Join-Path $root 'src\Forecaster\Forecaster.csproj'
+$server = Join-Path $root 'src\Forecaster.Server\Forecaster.Server.csproj'
 
 # ---- version agreement -----------------------------------------------------------
 # Four places name the version; a release whose DLLs disagree with its zip name is no good.
 $versions = @(
     ([xml](Get-Content $client)).Project.PropertyGroup.Version | Where-Object { $_ }
     ([xml](Get-Content $server)).Project.PropertyGroup.Version | Where-Object { $_ }
-    (Select-String -Path (Join-Path $root 'src\SPTForecaster\ForecasterPlugin.cs') -Pattern 'PluginVersion\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-    (Select-String -Path (Join-Path $root 'src\SPTForecaster.Server\ModMetadata.cs') -Pattern 'VersionText\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+    (Select-String -Path (Join-Path $root 'src\Forecaster\ForecasterPlugin.cs') -Pattern 'PluginVersion\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+    (Select-String -Path (Join-Path $root 'src\Forecaster.Server\ModMetadata.cs') -Pattern 'VersionText\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
 )
 if (($versions | Select-Object -Unique).Count -ne 1) {
     throw "Version mismatch: $($versions -join ', ')"
@@ -54,23 +54,23 @@ if ($LASTEXITCODE -ne 0) { throw 'Client build failed.' }
 dotnet build $server -c Release "-p:SPTPath=$ServerPath" --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Server build failed.' }
 
-$clientDll = Join-Path $root 'src\SPTForecaster\bin\Release\SPTForecaster.dll'
-$serverDll = Join-Path $root 'src\SPTForecaster.Server\bin\Release\SPTForecaster.Server.dll'
+$clientDll = Join-Path $root 'src\Forecaster\bin\Release\Forecaster.dll'
+$serverDll = Join-Path $root 'src\Forecaster.Server\bin\Release\Forecaster.Server.dll'
 
 # ---- zip -------------------------------------------------------------------------
 # Only install files: the zip is unpacked over the SPT root, so anything else would be left lying in it.
 $entries = [ordered]@{
-    'BepInEx/plugins/SPTForecaster.dll'                              = $clientDll
-    'SPT_Runtime/user/mods/SPTForecaster/SPTForecaster.Server.dll'   = $serverDll
+    'BepInEx/plugins/Forecaster/Forecaster.dll'               = $clientDll
+    'SPT_Runtime/user/mods/Forecaster/Forecaster.Server.dll'  = $serverDll
 }
 # The thunder clips (assets/thunder, cut by tools/thunder_clips.py), next to the plugin.
 foreach ($clip in Get-ChildItem (Join-Path $root 'assets\thunder') -Filter *.wav) {
-    $entries["BepInEx/plugins/SPTForecaster/thunder/$($clip.Name)"] = $clip.FullName
+    $entries["BepInEx/plugins/Forecaster/thunder/$($clip.Name)"] = $clip.FullName
 }
 
 $dist = Join-Path $root 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$zip = Join-Path $dist "SPTForecaster-$version.zip"
+$zip = Join-Path $dist "Forecaster-$version.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 
 $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
@@ -89,11 +89,11 @@ finally { $check.Dispose() }
 Write-Host "Wrote $zip" -ForegroundColor Green
 
 if ($Install) {
-    Copy-Item $clientDll (Join-Path $SPTPath 'BepInEx\plugins') -Force
-    $thunderDir = Join-Path $SPTPath 'BepInEx\plugins\SPTForecaster\thunder'
+    $thunderDir = Join-Path $SPTPath 'BepInEx\plugins\Forecaster\thunder'
     New-Item -ItemType Directory -Force -Path $thunderDir | Out-Null
+    Copy-Item $clientDll (Join-Path $SPTPath 'BepInEx\plugins\Forecaster') -Force
     Copy-Item (Join-Path $root 'assets\thunder\*.wav') $thunderDir -Force
-    $modDir = Join-Path $SPTPath 'SPT_Runtime\user\mods\SPTForecaster'
+    $modDir = Join-Path $SPTPath 'SPT_Runtime\user\mods\Forecaster'
     New-Item -ItemType Directory -Force -Path $modDir | Out-Null
     Copy-Item $serverDll $modDir -Force
     Write-Host "Installed into $SPTPath" -ForegroundColor Green

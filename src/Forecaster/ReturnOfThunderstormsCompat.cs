@@ -4,7 +4,7 @@ using HarmonyLib;
 using SPT.Reflection.Patching;
 using UnityEngine;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Return Of Thunderstorms (com.killdg.returnofthunderstorms, by killdg) adds storms of its own: it rolls each

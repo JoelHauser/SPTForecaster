@@ -1,5 +1,5 @@
 """
-Cuts SPTForecaster's thunder clips (BepInEx/plugins/SPTForecaster/thunder/*.wav) out of freely licensed field
+Cuts Forecaster's thunder clips (BepInEx/plugins/Forecaster/thunder/*.wav) out of freely licensed field
 recordings from Wikimedia Commons. Credits for every source are in THUNDER_CREDITS.md and the README.
 
 Each clip is one strike: from just before its onset to the end of its rumble, faded at both ends, mono,

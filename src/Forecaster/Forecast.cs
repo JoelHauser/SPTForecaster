@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using EFT.Weather;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     internal sealed class ForecastLine
     {

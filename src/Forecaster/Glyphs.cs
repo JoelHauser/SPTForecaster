@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Our own weather glyphs, for weather the game has no icon for: snow, blizzard, mist, dense and thick fog,
@@ -23,7 +23,7 @@ namespace SPTForecaster
             Sprite sprite = null;
             try
             {
-                using (var stream = typeof(Glyphs).Assembly.GetManifestResourceStream("SPTForecaster.Glyphs." + name + ".png"))
+                using (var stream = typeof(Glyphs).Assembly.GetManifestResourceStream("Forecaster.Glyphs." + name + ".png"))
                 {
                     if (stream != null)
                     {
@@ -33,7 +33,7 @@ namespace SPTForecaster
                         var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
                         texture.LoadImage(bytes, true);
                         sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
-                        sprite.name = "SPTForecaster." + name;
+                        sprite.name = "Forecaster." + name;
                     }
                     else
                     {

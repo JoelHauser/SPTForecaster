@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using JsonType;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>Which locations get a forecast, which play a single fixed slot, and where each sits on the map.</summary>
     internal static class Maps

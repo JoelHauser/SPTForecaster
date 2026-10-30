@@ -6,7 +6,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// The forecast box. It sits on top of the conditions panel's time bar, exactly as wide, always the same
@@ -22,7 +22,7 @@ namespace SPTForecaster
     /// </summary>
     internal sealed class ForecastView
     {
-        private const string RootName = "SPTForecaster";
+        private const string RootName = "Forecaster";
         private const float FaintAlpha = 0.6f;
 
         /// <summary>Weather text size as a fraction of the time slot's clock, and the gap above the bar.</summary>

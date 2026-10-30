@@ -5,7 +5,7 @@ using EFT;
 using EFT.Weather;
 using UnityEngine;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>
     /// Brings the game's own blizzard into a Winter raid while the forecast says "Blizzard". The game has one

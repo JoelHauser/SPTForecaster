@@ -1,6 +1,6 @@
 # Thunder sound credits
 
-SPTForecaster's thunder clips (`assets/thunder`, installed to `BepInEx/plugins/SPTForecaster/thunder`) are cut from these
+Forecaster's thunder clips (`assets/thunder`, installed to `BepInEx/plugins/Forecaster/thunder`) are cut from these
 field recordings on Wikimedia Commons by `tools/thunder_clips.py`: each clip is one strike, trimmed, faded, mono and
 loudness-matched, then has the recording's rain filtered out by `tools/derain.py`. Each clip is shared under its source's licence (the CC BY-SA clips stay CC BY-SA; the public-domain ones are free of any).
 

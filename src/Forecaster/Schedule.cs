@@ -3,7 +3,7 @@ using Newtonsoft.Json.Linq;
 using SPT.Common.Http;
 using UnityEngine;
 
-namespace SPTForecaster
+namespace Forecaster
 {
     /// <summary>One stretch of a location's weather. Start and End are Tarkov seconds.</summary>
     internal sealed class Block
@@ -90,7 +90,7 @@ namespace SPTForecaster
         {
             try
             {
-                var body = RequestHandler.PostJson("/sptforecaster/field", "{}");
+                var body = RequestHandler.PostJson("/forecaster/field", "{}");
                 if (string.IsNullOrEmpty(body)) throw new Exception("empty response");
 
                 var json = JObject.Parse(body);
@@ -109,7 +109,7 @@ namespace SPTForecaster
                 if (!_warned)
                 {
                     _warned = true;
-                    ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the SPTForecaster " + ForecasterPlugin.PluginVersion + " server mod installed?");
+                    ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the Forecaster " + ForecasterPlugin.PluginVersion + " server mod installed?");
                 }
             }
         }
@@ -120,7 +120,7 @@ namespace SPTForecaster
             if (_versionChecked) return;
             _versionChecked = true;
             if (server == null || server == ForecasterPlugin.PluginVersion) return;
-            ForecasterPlugin.Log.LogWarning($"The SPTForecaster server mod is {server}, this client plugin is {ForecasterPlugin.PluginVersion}. Install both from the same release.");
+            ForecasterPlugin.Log.LogWarning($"The Forecaster server mod is {server}, this client plugin is {ForecasterPlugin.PluginVersion}. Install both from the same release.");
         }
 
         public static bool IsNight(double tarkovSeconds)

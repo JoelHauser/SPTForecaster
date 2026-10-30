@@ -2,13 +2,13 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 
-namespace SPTForecaster
+namespace Forecaster
 {
-    [BepInPlugin("com.mybutthasarash.sptforecaster", "SPTForecaster", PluginVersion)]
+    [BepInPlugin("com.mybutthasarash.forecaster", "Forecaster", PluginVersion)]
     public class ForecasterPlugin : BaseUnityPlugin
     {
         /// <summary>Must match the csproj Version and the server mod's.</summary>
-        public const string PluginVersion = "0.3.0";
+        public const string PluginVersion = "1.0.0";
 
         internal static ManualLogSource Log;
 
@@ -107,7 +107,20 @@ namespace SPTForecaster
             Enable(new SetWeatherNodesPatch());
             Thunder.LoadClips(this, System.IO.Path.GetDirectoryName(Info.Location));
 
-            Log.LogInfo($"SPTForecaster {PluginVersion} loaded.");
+            Log.LogInfo($"Forecaster {PluginVersion} loaded.");
+        }
+
+        /// <summary>The plugin's GUID before it was renamed Forecaster (0.2.2 and earlier).</summary>
+        private const string OldGuid = "com.mybutthasarash.sptforecaster";
+
+        /// <summary>Every plugin has loaded by now: an old SPTForecaster left in the install would run alongside this one.</summary>
+        private void Start()
+        {
+            if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(OldGuid))
+            {
+                Log.LogWarning("The old SPTForecaster plugin is still installed and runs alongside Forecaster. "
+                               + "Remove BepInEx/plugins/SPTForecaster.dll and the BepInEx/plugins/SPTForecaster folder.");
+            }
         }
 
         /// <summary>A setting the F12 menu lists only with its advanced settings shown.</summary>
