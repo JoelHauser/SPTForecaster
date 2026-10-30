@@ -2,7 +2,7 @@
 
 A weather forecast and a live weather radar for SPT's map select screen. Every map has its own weather, and the raid gets the weather the forecast showed.
 
-Requires SPT 4.1.
+**Version 1.0.0** for SPT 4.1. [Download](https://github.com/JoelHauser/SPTForecaster/releases/latest)
 
 ## What you get
 
@@ -29,7 +29,12 @@ The seed is saved on the server, so the weather survives restarts and everyone o
 
 ## Install
 
-Download `Forecaster-<version>.zip` from [Releases](https://github.com/JoelHauser/SPTForecaster/releases) and extract it into your SPT folder, the one with `EscapeFromTarkov.exe`. It adds a client plugin, a server mod and the thunder sounds. Both halves are needed.
+Download `Forecaster-1.0.0.zip` from the [latest release](https://github.com/JoelHauser/SPTForecaster/releases/latest) and extract it into your SPT folder, the one with `EscapeFromTarkov.exe`. Both halves are needed:
+
+- `BepInEx/plugins/Forecaster/`: the client plugin and its thunder sounds
+- `SPT_Runtime/user/mods/Forecaster/`: the server mod, which also keeps the weather seed
+
+When the server starts, its console shows `[Forecaster] 1.0.0 loaded, weather seed ready` and the season.
 
 **Updating from SPTForecaster (0.2.2 or earlier):** the mod is now called Forecaster. Install it, start the server once so it can copy your weather seed, then delete `BepInEx/plugins/SPTForecaster.dll`, the `BepInEx/plugins/SPTForecaster` folder and `SPT_Runtime/user/mods/SPTForecaster`. Your F12 settings start fresh.
 
