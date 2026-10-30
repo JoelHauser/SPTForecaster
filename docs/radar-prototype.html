@@ -71,7 +71,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 [hidden] { display: none !important; }
 #radar, #territory { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.radar-bar { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(8,9,8,.82); border: 1px solid var(--line); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+.radar-bar { position: absolute; right: 10px; top: 10px; display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: rgba(8,9,8,.82); border: 1px solid var(--line); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
 .radar-bar button { padding: 3px 10px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--fg); font: inherit; letter-spacing: inherit; text-transform: inherit; }
 .radar-bar button:hover { border-color: var(--fg); }
 .radar-bar button[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
@@ -79,11 +79,24 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .radar-bar input[type=range] { width: 110px; accent-color: var(--fg); }
 .radar-op { display: flex; align-items: center; gap: 6px; padding-left: 8px; border-left: 1px solid var(--line); }
 .radar-op input[type=range] { width: 70px; }
-.radar-key { position: absolute; left: 10px; top: 10px; display: flex; gap: 3px; align-items: center; padding: 4px 7px; background: rgba(8,9,8,.75); border: 1px solid var(--line-soft); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.radar-key i { width: 14px; height: 8px; display: inline-block; }
-.radar-key span { margin: 0 4px; }
-.radar-pattern { color: var(--fg); font-weight: 700; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
-@media (max-width: 520px) { .radar-key { display: none; } .radar-time { min-width: 0; } .radar-bar { left: 10px; flex-wrap: wrap; } .radar-bar input[type=range] { flex: 1; width: auto; } }
+/* In game: the key in the map's bottom-right corner, the time bar's colour, the "SELECT TIME PHASE:" label's style. */
+.radar-key { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 5px; align-items: center; padding: 5px 9px; background: rgba(13,15,15,.9); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.radar-key i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.radar-key span { margin: 0 2px 0 10px; }
+.radar-key span:first-child { margin-left: 0; }
+/* In game: the raid playback readout, just above the key. */
+.radar-playout { position: absolute; right: 10px; bottom: 42px; display: flex; flex-direction: column; gap: 4px; padding: 5px 9px; min-width: 150px; background: rgba(13,15,15,.9); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+.radar-playout[data-off] { opacity: 0; }
+.radar-playout b { display: block; height: 3px; background: rgba(199,197,180,.18); }
+.radar-playout b i { display: block; height: 100%; width: 0; background: var(--fg); }
+.loc.ring i { box-shadow: 0 0 0 5px rgba(199,197,180,.22), 0 0 0 6px rgba(199,197,180,.5); }
+.field.pb { grid-column: 1 / -1; }
+.pb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 8px 28px; }
+.pb-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 52px; gap: 10px; align-items: center; font-size: 14px; }
+.pb-row input[type=range] { width: 100%; accent-color: var(--fg); }
+.pb-row select { grid-column: 2 / 4; background: #0c0d0c; color: var(--fg); border: 1px solid var(--line); font: inherit; padding: 3px 4px; }
+.pb-row .mono { text-align: right; }
+@media (max-width: 520px) { .radar-key, .radar-playout { display: none; } .radar-time { min-width: 0; } .radar-bar { left: 10px; flex-wrap: wrap; } .radar-bar input[type=range] { flex: 1; width: auto; } }
 .map-note { position: absolute; left: 12px; bottom: 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(199,197,180,.35); }
 .loc { position: absolute; transform: translate(-7px, -7px); display: flex; align-items: center; gap: 7px; background: none; border: 0; padding: 0; white-space: nowrap; }
 .loc i { width: 14px; height: 14px; border: 1.5px solid var(--fg); background: var(--screen); transform: rotate(45deg); flex: none; transition: background .15s, border-color .15s; }
@@ -209,7 +222,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 <body>
 <main>
   <header>
-    <h1>SPTForecaster radar</h1>
+    <h1>Forecaster radar</h1>
     <p class="lede">Prototype: weather as a field over the region instead of one global schedule. Storms drift across the map, each location reads the field at its own spot, and the radar draws the same field, so what you see on it is what the raid gets.</p>
   </header>
 
@@ -235,6 +248,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         <canvas id="radar" width="600" height="400" aria-hidden="true"></canvas>
         <div id="locs"></div>
         </div>
+        <div class="radar-playout" id="radarPlayout" aria-hidden="true" data-off><span id="radarPlayText"></span><b><i id="radarPlayBar"></i></b></div>
         <div class="radar-key" id="radarKey" aria-hidden="true"></div>
         <div class="radar-bar">
           <button type="button" id="radarToggle" aria-pressed="true">Radar</button>
@@ -276,15 +290,19 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         <span class="mono" id="aheadLabel"></span>
       </label>
       <div class="field"><span>Season</span>
-        <div class="seg" role="group" aria-label="Season">
-          <button class="ctl" id="seaSummer" type="button" aria-pressed="true">Summer</button>
-          <button class="ctl" id="seaWinter" type="button" aria-pressed="false">Winter</button>
-        </div>
+        <select id="season" class="ctl" aria-label="Season (SPT's)">
+          <option value="0" selected>Summer</option><option value="1">Autumn</option><option value="4">Late autumn</option>
+          <option value="2">Winter</option><option value="5">Early spring</option><option value="3">Spring</option><option value="6">Storm</option>
+        </select>
       </div>
       <div class="field"><span>Loading time</span>
         <input id="load" type="range" min="0" max="5" step="0.5" value="2">
         <span class="mono" id="loadLabel"></span>
         <label class="check"><input id="lock" type="checkbox" checked> Lock the raid's weather when the slot is confirmed</label>
+      </div>
+      <div class="field"><span>Raid time (server setting)</span>
+        <input id="raidMin" type="range" min="10" max="120" step="5" value="40">
+        <span class="mono" id="raidMinLabel"></span>
       </div>
       <div class="field"><span>Other mods</span>
         <label class="check"><input id="territories" type="checkbox"> TushonkaTerritories installed (its faction map under the radar)</label>
@@ -292,6 +310,21 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
       <div class="field"><span>Server restart</span>
         <button class="ctl" id="restart" type="button">Restart server</button>
         <label class="check"><input id="persist" type="checkbox" checked> Keep the schedule across restarts</label>
+      </div>
+      <div class="field pb"><span>Radar playback (tuning: pick what looks right, the mod will use it)</span>
+        <div class="pb-grid">
+          <label class="pb-row"><span>After a slot is picked</span>
+            <select id="pbMode"><option value="loop">Loop until another slot is picked</option><option value="2" selected>Play twice, then rest on the start</option><option value="1">Play once, then rest on the start</option><option value="0">Don't play (button only)</option></select></label>
+          <label class="pb-row"><span>Motion</span>
+            <select id="pbMotion"><option value="smooth" selected>Smooth (storms slide)</option><option value="xfade">14-min steps, crossfaded</option><option value="cut">14-min steps, hard cut</option></select></label>
+          <label class="pb-row"><span>Length of one play</span><input id="pbLen" type="range" min="4" max="30" step="1" value="12"><span class="mono" id="pbLenLabel"></span></label>
+          <label class="pb-row"><span>Hold at start and end</span><input id="pbHold" type="range" min="0" max="3" step="0.25" value="1"><span class="mono" id="pbHoldLabel"></span></label>
+          <label class="pb-row"><span>Fade between plays</span><input id="pbFade" type="range" min="0" max="1.5" step="0.1" value="0.5"><span class="mono" id="pbFadeLabel"></span></label>
+          <label class="pb-row"><span>Wait after a click</span><input id="pbDelay" type="range" min="0" max="2" step="0.1" value="0.5"><span class="mono" id="pbDelayLabel"></span></label>
+          <label class="check"><input id="pbScale" type="checkbox"> Longer raids play longer (length above is per 40 raid min)</label>
+          <label class="check"><input id="pbRing" type="checkbox" checked> Ring the selected map while playing</label>
+          <label class="check"><input id="pbReadout" type="checkbox" checked> Raid time readout above the key</label>
+        </div>
       </div>
       <p class="status" id="status" role="status"></p>
     </div>
@@ -325,12 +358,13 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     <div>
       <h3>How the field works</h3>
       <ul>
-        <li>Every 8 in-game hours the region rolls a weather pattern: fair weather, unsettled, prolonged rain, a storm front, or coastal fog. Weather already in the sky carries over, so patterns hand over gradually.</li>
+        <li>The region is always in one weather pattern (fair weather, overcast, showers, prolonged rain, a storm front, coastal fog), in 8-in-game-hour steps. Patterns follow on from each other like real weather: fine spells last, and a break goes cloud, then rain or a front, then showers, then clearing. SPT's season sets how long each lasts and what comes next, modelled on St Petersburg's climate (the real one nearest Tarkov's Norvinsk region).</li>
+        <li>Summer showers come mostly in the afternoon; fog forms on calm nights, more after rain; the wind is lighter in fine weather and stronger with fronts.</li>
         <li>Storms have shapes: small lumpy showers; fronts and squall lines as long curved bands across the wind, sharp in front with rain trailing behind; a wide, slow shield of prolonged rain; fog lying along the coast. Noise roughens every edge and breaks rain into cells.</li>
         <li>Each location samples the field at its marker every 14 in-game minutes (two real minutes). The cards, the radar and the raid all read those samples.</li>
         <li>Everything comes from one seed, so saving the seed is all a server restart needs.</li>
         <li>Thresholds have a little hysteresis so a cell edge passing over a map doesn't flicker the forecast.</li>
-        <li>The radar is a light wash with fine outlines at each rain level, so the map art and TushonkaTerritories' faction colours show through it.</li>
+        <li>The radar is a light wash, one colour per rain level the card names (switching exactly where the card's level does), so the colour over a map is the word on its card and the map art and TushonkaTerritories' faction colours show through.</li>
       </ul>
     </div>
   </section>
@@ -408,8 +442,11 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     lightsnow: function () { return cloud("translate(0 -4.5)") + flakes([[9.5, 18.2], [15, 18.2]], 1.7); },
     snow: function () { return cloud("translate(0 -4.5)") + flakes([[8, 17.6], [12.5, 19.8], [17, 17.6]], 1.6); },
     heavysnow: function () { return cloud("translate(0 -5)", " fill=\"currentColor\" fill-opacity=\".3\"") + flakes([[7.5, 16], [12, 16], [16.5, 16], [9.8, 20.4], [14.2, 20.4]], 1.4); },
-    fog: function () { return "<path d=\"M4 9h16M3 13h12M6 17h14\"/>"; },
-    densefog: function () { return "<path d=\"M3 6.5h18M4 10.5h15M3 14.5h18M5 18.5h14\" stroke-width=\"2.2\"/>"; },
+    mist: function () { return "<path d=\"M4 9h6M13 9h7M3 13h4M10 13h8M6 17h5M14 17h5\" stroke-width=\"1.4\"/>"; },
+    fog: function () { return "<path d=\"M4 7h16M4 11h16M4 15h16M4 19h16\"/>"; },
+    densefog: function () { return "<path d=\"M3 5.5h18M3 9h18M3 12.5h18M3 16h18M3 19.5h18\" stroke-width=\"2\"/>"; },
+    thickfog: function () { return "<path d=\"M2.5 4.5h19M2.5 7.5h19M2.5 10.5h19M2.5 13.5h19M2.5 16.5h19M2.5 19.5h19\" stroke-width=\"2.4\"/>"; },
+    blizzard: function () { return cloud("translate(2 -4.5) scale(.9)") + "<path d=\"M2 9h4M1 12.5h5M2 16h3\"/>" + flakes([[9, 18.5], [14.5, 20.5], [20, 18]], 1.5); },
     calm: function () { return "<path d=\"M4 12h16\"/><circle cx=\"4\" cy=\"12\" r=\".6\"/><circle cx=\"20\" cy=\"12\" r=\".6\"/>"; },
     breezy: function () { return "<path d=\"M3 10h11a2.5 2.5 0 1 0-2.5-2.5M3 15h13a2.6 2.6 0 1 1-2.6 2.6\"/>"; },
     wind: function () { return "<path d=\"M3 8h10a2.5 2.5 0 1 0-2.5-2.5M3 12h15a2.8 2.8 0 1 1-2.8 2.8M3 16h8\"/>"; },
@@ -445,35 +482,113 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   function mix(a, b) { var h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b | 0) + 0x7f4a7c15, 0xc2b2ae35); return h ^ (h >>> 13); }
   function newSeed() { return (Math.random() * 0x7fffffff) | 0; }
 
-  // Wind: direction (radians, the way storms drift) turns over days; strength 0..1 rises and falls over hours.
+  // Wind: direction (radians, the way storms drift) turns over days; strength 0..1 rises and falls over
+  // hours, calmer in fine weather and stronger with fronts and showers.
   function windAt(t) {
     var s = (state.seed % 997) / 997 * Math.PI * 2;
-    return { dir: s + 0.9 * Math.sin(t / 150000 + s), str: 0.5 + 0.5 * Math.sin(t / 47000 + s * 1.7) };
+    var str = 0.45 + 0.4 * Math.sin(t / 47000 + s * 1.7) + patternBlend(t, "wind") + climate().wind;
+    return { dir: s + 0.9 * Math.sin(t / 150000 + s), str: Math.max(0, Math.min(1, str)) };
   }
 
   // ---- weather patterns ----
-  // Every 8 in-game hours (about 69 real minutes) the region rolls a pattern that sets what kind of
-  // weather forms: long stretches of rain, settled fine weather, fog along the coast, a storm front.
+  // Every 8 in-game hours (about 69 real minutes) the region is in one weather pattern, which sets what
+  // kind of weather forms. Patterns follow on from each other the way real weather does: fine weather
+  // tends to last, and when it breaks it goes the usual way (cloud thickening, a front or steady rain,
+  // showers behind it, clearing). How long each lasts and what it turns into depend on the season.
   // Weather already in the sky carries over, so patterns hand over gradually rather than switching.
   var PERIOD_S = 8 * 3600;
+  var KEYS = ["fair", "grey", "unsettled", "longrain", "coastfog", "storms"];
   var PATTERNS = {
-    fair:      { name: "Fair weather",   weight: 30, showers: 0.06, fronts: 0,    fog: 0.5, clouds: -0.75 },
-    unsettled: { name: "Unsettled",      weight: 28, showers: 0.85, fronts: 0.14, fog: 1,   clouds: 0.1 },
-    longrain:  { name: "Prolonged rain", weight: 14, showers: 0.35, fronts: 0,    fog: 1,   clouds: 0.7, shield: true },
-    coastfog:  { name: "Coastal fog",    weight: 14, showers: 0.12, fronts: 0,    fog: 1,   clouds: -0.3, coast: true },
-    storms:    { name: "Storm front",    weight: 10, showers: 0.55, fronts: 0,    fog: 0.3, clouds: 0.45, squall: true }
+    fair:      { name: "Fair weather",   showers: 0.05, fronts: 0,    fog: 1,   clouds: -1.05, wind: -0.15 },
+    grey:      { name: "Overcast",       showers: 0,    fronts: 0,    fog: 0.6, clouds: 0.65,  wind: 0 },
+    unsettled: { name: "Showers",        showers: 0.6,  fronts: 0.05, fog: 0.4, clouds: 0.1,   wind: 0.15 },
+    longrain:  { name: "Prolonged rain", showers: 0.15, fronts: 0,    fog: 0.5, clouds: 0.75,  wind: 0.05, shield: true },
+    coastfog:  { name: "Coastal fog",    showers: 0,    fronts: 0,    fog: 1,   clouds: -0.5,  wind: -0.2, coast: true },
+    storms:    { name: "Storm front",    showers: 0.35, fronts: 0,    fog: 0,   clouds: 0.45,  wind: 0.35, squall: true }
   };
+  // What each pattern can turn into, and how readily, before the season's weighting: fine weather clouds
+  // over or fogs up along the coast, or a front comes through; cloud brings steady rain or clears;
+  // rain and fronts leave showers behind; showers clear.
+  var NEXT = {
+    fair:      { grey: 3, coastfog: 1.5, storms: 1, unsettled: 0.5 },
+    grey:      { fair: 2, longrain: 2, unsettled: 1 },
+    unsettled: { fair: 2, grey: 1, storms: 0.3 },
+    longrain:  { unsettled: 2, grey: 1.5 },
+    coastfog:  { fair: 2, grey: 1 },
+    storms:    { unsettled: 2, fair: 1.5, grey: 0.5 }
+  };
+  // Per climate: how strongly each pattern is favoured when the weather changes, how likely each is to
+  // last another 8 hours, how much afternoon heating drives showers (0 none, 1 full summer), how readily
+  // fog forms, and how much cloudier and windier than the patterns' own levels it runs.
+  // Modelled on St Petersburg (Pulkovo), at the head of the Gulf of Finland, the real climate nearest the
+  // game's Norvinsk region: clear days are rare all year; summer has the most sun and afternoon
+  // thunderstorms; autumn into winter is grey, wet and foggy, winter snowing on about half its days;
+  // spring is the driest season. Monthly figures from climates.com's St Petersburg guide (blue sky, dry,
+  // snowy, thunder and foggy days) and Wikipedia's Climate of Saint Petersburg (1991-2020 sunshine).
+  var CLIMATES = {
+    summer:      { weight: { fair: 2.2, grey: 1.3, unsettled: 1.7, longrain: 0.7, coastfog: 0.6, storms: 2.2 },
+                   stay: { fair: 0.7, grey: 0.45, unsettled: 0.3, longrain: 0.35, coastfog: 0.3, storms: 0.05 }, heat: 1, fog: 0.5, clouds: 0.15, wind: -0.05, thunder: 0.7 },
+    autumn:      { weight: { fair: 1.2, grey: 2.4, unsettled: 1.2, longrain: 1.8, coastfog: 1.3, storms: 0.4 },
+                   stay: { fair: 0.6, grey: 0.65, unsettled: 0.3, longrain: 0.5, coastfog: 0.45, storms: 0.05 }, heat: 0.2, fog: 2.1, clouds: 0.02, wind: 0.05, thunder: 0.15 },
+    lateautumn:  { weight: { fair: 0.7, grey: 3, unsettled: 0.8, longrain: 2, coastfog: 0.8, storms: 0.2 },
+                   stay: { fair: 0.5, grey: 0.75, unsettled: 0.3, longrain: 0.55, coastfog: 0.4, storms: 0.05 }, heat: 0, fog: 2.3, clouds: 0.12, wind: 0.08, thunder: 0 },
+    winter:      { weight: { fair: 1, grey: 3, unsettled: 0.9, longrain: 2.4, coastfog: 0.4, storms: 0.7 },
+                   stay: { fair: 0.6, grey: 0.72, unsettled: 0.35, longrain: 0.55, coastfog: 0.3, storms: 0.05 }, heat: 0, fog: 1.9, clouds: 0.02, wind: 0.05, thunder: 0 },
+    earlyspring: { weight: { fair: 1.8, grey: 2, unsettled: 1, longrain: 1.5, coastfog: 1, storms: 0.2 },
+                   stay: { fair: 0.65, grey: 0.6, unsettled: 0.3, longrain: 0.45, coastfog: 0.4, storms: 0.05 }, heat: 0.2, fog: 1.2, clouds: 0.1, wind: 0, thunder: 0.05 },
+    spring:      { weight: { fair: 2, grey: 1.6, unsettled: 1.3, longrain: 0.8, coastfog: 1.4, storms: 0.5 },
+                   stay: { fair: 0.7, grey: 0.5, unsettled: 0.3, longrain: 0.4, coastfog: 0.4, storms: 0.05 }, heat: 0.6, fog: 0.9, clouds: 0.15, wind: 0, thunder: 0.4 },
+    storm:       { weight: { fair: 0.8, grey: 1.4, unsettled: 1.8, longrain: 1.5, coastfog: 0.3, storms: 2.5 },
+                   stay: { fair: 0.55, grey: 0.45, unsettled: 0.4, longrain: 0.45, coastfog: 0.3, storms: 0.15 }, heat: 0, fog: 0.5, clouds: 0.1, wind: 0.15, thunder: 0 }
+  };
+  // SPT's seasons, in its Season enum's order: SUMMER, AUTUMN, WINTER, SPRING, AUTUMN_LATE, SPRING_EARLY, STORM.
+  var SEASON_CLIMATE = ["summer", "autumn", "winter", "spring", "lateautumn", "earlyspring", "storm"];
+  function climate() { return CLIMATES[SEASON_CLIMATE[state.season] || "summer"]; }
+
   // The coast: Lighthouse, Shoreline and Icebreaker's water sit on the region's western edge.
   var COAST_X = 88, COAST_Y = 215;
+
+  // The chain of patterns runs forward period by period from a fixed starting period, each step drawn
+  // from that period's own seeded numbers, so any period can be worked out on its own and always comes
+  // out the same. Checkpoints every 1024 periods keep that cheap. A new seed or season starts it afresh.
+  var CHAIN_FROM = 400000, MARK = 1024; // period 400000 is in 2022 on the Tarkov clock
+  var chain = { key: null };
   var patternCache = {};
+  function pickIndex(x, weights) {
+    var total = 0, i;
+    for (i = 0; i < weights.length; i++) total += weights[i];
+    x *= total;
+    for (i = 0; i < weights.length; i++) { x -= weights[i]; if (x < 0) return i; }
+    return weights.length - 1;
+  }
+  function chainTables() {
+    var cl = climate();
+    return {
+      start: KEYS.map(function (k) { return cl.weight[k]; }),
+      stay: KEYS.map(function (k) { return cl.stay[k]; }),
+      next: KEYS.map(function (k) { return KEYS.map(function (n) { return (NEXT[k][n] || 0) * cl.weight[n]; }); })
+    };
+  }
+  function stepPattern(tables, k, p) {
+    var r = rng(mix(state.seed ^ 0x5bd1e995, p));
+    return r() < tables.stay[k] ? k : pickIndex(r(), tables.next[k]);
+  }
   function patternOfPeriod(p) {
-    var key = state.seed + ":" + p;
-    if (patternCache[key]) return patternCache[key];
-    var r = rng(mix(state.seed ^ 0x5bd1e995, p)), total = 0, k;
-    for (k in PATTERNS) total += PATTERNS[k].weight;
-    var x = r() * total;
-    for (k in PATTERNS) { x -= PATTERNS[k].weight; if (x < 0) break; }
-    return (patternCache[key] = k);
+    var key = state.seed + ":" + state.season;
+    if (chain.key !== key) { chain = { key: key, marks: [], tables: chainTables() }; patternCache = {}; }
+    if (patternCache[p] !== undefined) return patternCache[p];
+    var q = Math.max(0, p - CHAIN_FROM), m = Math.floor(q / MARK), k, i;
+    while (chain.marks.length <= m) {
+      var n = chain.marks.length;
+      if (n === 0) { chain.marks.push(pickIndex(rng(mix(state.seed, 0x2545f491))(), chain.tables.start)); continue; }
+      k = chain.marks[n - 1];
+      for (i = (n - 1) * MARK; i < n * MARK; i++) k = stepPattern(chain.tables, k, i + CHAIN_FROM);
+      chain.marks.push(k);
+    }
+    k = chain.marks[m];
+    for (i = m * MARK; i < q; i++) k = stepPattern(chain.tables, k, i + CHAIN_FROM);
+    if (Object.keys(patternCache).length > 4000) patternCache = {};
+    return (patternCache[p] = KEYS[k]);
   }
   /** The pattern at time t, with when it began and when it ends (runs of the same pattern merged). */
   function patternAt(t) {
@@ -482,11 +597,12 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     while (b < p + 6 && patternOfPeriod(b + 1) === key) b++;
     return { key: key, def: PATTERNS[key], start: a * PERIOD_S, end: (b + 1) * PERIOD_S };
   }
-  /** Background cloudiness eases from one pattern's level to the next over the first hour of a period. */
-  function patternClouds(t) {
-    var p = Math.floor(t / PERIOD_S), cur = PATTERNS[patternOfPeriod(p)].clouds, prev = PATTERNS[patternOfPeriod(p - 1)].clouds;
+  /** A pattern value (its cloud or wind) eased from the last pattern's to this one's over the period's first hour. */
+  function patternBlend(t, field) {
+    var p = Math.floor(t / PERIOD_S), cur = PATTERNS[patternOfPeriod(p)][field], prev = PATTERNS[patternOfPeriod(p - 1)][field];
     return prev + (cur - prev) * smoothstep(0, 3600, t - p * PERIOD_S);
   }
+  function patternClouds(t) { return patternBlend(t, "clouds") + climate().clouds; }
 
   // ---- storm shapes ----
   // Showers are small lumpy cells; fronts and squall lines are long curved bands lying across the wind,
@@ -533,18 +649,29 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     }
     return c;
   }
+  // How much the hour of day drives showers: with the season's heating (summer), mostly in the afternoon
+  // and rarely at night; without it (winter), the same all day. Averages about 1 over a day either way.
+  function showerHour(hourOfDay, heat) {
+    var d = (hourOfDay + 0.5 - 15) / 3.2;
+    return (1 - heat) + heat * (0.25 + 2.6 * Math.exp(-d * d));
+  }
   function cellsForHour(h) {
-    var key = state.seed + ":" + h;
+    var key = state.seed + ":" + state.season + ":" + h;
     if (cellCache[key]) return cellCache[key];
-    var r = rng(mix(state.seed, h)), out = [], hourOfDay = ((h % 24) + 24) % 24;
-    var t0 = h * 3600, pat = patternAt(t0 + 1800).def, periodStart = t0 % PERIOD_S === 0;
-    if (r() < pat.showers) out.push(makeCell(r, t0, "shower"));
-    if (r() < pat.showers * 0.4) out.push(makeCell(r, t0, "shower"));
-    if (r() < pat.fronts) out.push(makeCell(r, t0, "front"));
-    if (periodStart && pat.shield) out.push(makeCell(r, t0, "shield", true));
-    if (periodStart && pat.squall) out.push(makeCell(r, t0, "squall", true));
-    if (periodStart && pat.coast) out.push(makeCell(r, t0, "coastfog", true));
-    if (r() < (hourOfDay >= 1 && hourOfDay <= 8 ? 0.3 : 0.05) * pat.fog) out.push(makeCell(r, t0, "fog"));
+    var r = rng(mix(state.seed, h)), out = [], hourOfDay = ((h % 24) + 24) % 24, cl = climate();
+    var t0 = h * 3600, pat = patternAt(t0 + 1800), def = pat.def, periodStart = t0 % PERIOD_S === 0;
+    var showers = def.showers * showerHour(hourOfDay, cl.heat);
+    if (r() < showers) out.push(makeCell(r, t0, "shower"));
+    if (r() < showers * 0.4) out.push(makeCell(r, t0, "shower"));
+    if (r() < def.fronts) out.push(makeCell(r, t0, "front"));
+    if (periodStart && def.shield) out.push(makeCell(r, t0, "shield", true));
+    if (periodStart && def.squall) out.push(makeCell(r, t0, "squall", true));
+    if (periodStart && def.coast) out.push(makeCell(r, t0, "coastfog", true));
+    // Fog forms on calm nights, more readily when the ground is still wet from rain, and not in a wind.
+    var prev = patternOfPeriod(Math.floor(t0 / PERIOD_S) - 1);
+    var wet = prev === "longrain" || prev === "unsettled" || prev === "storms" ? 1.6 : 1;
+    var calm = 1 - smoothstep(0.35, 0.7, windAt(t0).str);
+    if (r() < (hourOfDay >= 1 && hourOfDay <= 8 ? 0.3 : 0.04) * def.fog * cl.fog * wet * calm) out.push(makeCell(r, t0, "fog"));
     return (cellCache[key] = out);
   }
   function activeCells(t) {
@@ -633,7 +760,11 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   // Levels with a little hysteresis: going up needs the value a margin past the threshold, coming down a
   // margin under it, so a cell's edge drifting over a location doesn't flicker the forecast.
-  var RAIN_STEPS = [0.12, 0.3, 0.55, 0.8], FOG_STEPS = [0.38, 0.67], MARGIN = 0.03;
+  // Fog has four strengths the card names: mist, fog, dense fog, thick fog. FOG_VALUES are what the raid
+  // gets (ScaterringFogDensity): SPT's own presets stop at 0.006, the game's scales go far higher, and
+  // bots' sight is cut more and more from 0.004 up to 0.01 (LookSensor), so dense and thick fog matter.
+  var RAIN_STEPS = [0.12, 0.3, 0.55, 0.8], FOG_STEPS = [0.3, 0.45, 0.65, 0.85], MARGIN = 0.03;
+  var FOG_VALUES = [0.0013, 0.0045, 0.0065, 0.01, 0.016], FOG_NAMES = ["", "Mist", "Fog", "Dense fog", "Thick fog"];
   function level(value, steps, prev) {
     var up = 0, down = 0;
     steps.forEach(function (th) { if (value >= th + MARGIN) up++; if (value >= th - MARGIN) down++; });
@@ -655,9 +786,15 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         start: t, end: t + STEP,
         clouds: Math.round(clouds * 100) / 100,
         rain: rl ? rl + 1 : 1, rainIntensity: Math.round(f.rain * 100) / 100,
-        fog: [0.0013, 0.0045, 0.0065][fl],
+        fog: FOG_VALUES[fl], fogLevel: fl,
         wind: Math.min(4, Math.round(w.str * 3 + (f.rain > 0.5 ? 1 : 0)))
       });
+      // A blizzard: snow (not just light snow) in a strong wind; the game drives the Storm season's snow anyway.
+      var last = out[out.length - 1];
+      last.blizzard = state.winter && last.rain >= 3 && (last.wind >= 3 || state.season === 6);
+      // A thunderstorm: rain (not light rain, not snow) in an hour the season makes electric; storm fronts are three times as likely.
+      var cl = climate(), electric = patternAt(t).key === "storms" ? Math.min(1, cl.thunder * 3) : cl.thunder;
+      last.thunder = !state.winter && last.rain >= 3 && rng(mix(state.seed ^ 0x27d4eb2d, Math.floor(t / 3600)))() < electric;
     }
     return out;
   }
@@ -665,18 +802,20 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   // ---- numbers to words ---------------------------------------------------
   function read(b) {
     var sky = b.clouds <= -0.8 ? ["Clear", "clear"] : b.clouds <= 0.4 ? ["Partly cloudy", "partly"] : b.clouds < 1.1 ? ["Overcast", "overcast"] : ["Stormy skies", "storm"];
-    var label = sky[0], cat = sky[1], g = sky[1], wet = false, foggy = b.fog >= 0.004;
-    var fogLabel = b.fog >= 0.006 ? "Dense fog" : "Fog";
+    var label = sky[0], cat = sky[1], g = sky[1], wet = false, fogLevel = b.fogLevel || 0, foggy = fogLevel > 0;
+    var fogLabel = FOG_NAMES[fogLevel];
     if (b.rain >= 2) {
       wet = true;
-      if (state.winter) { label = b.rain === 2 ? "Light snow" : b.rain === 3 ? "Snow" : "Heavy snow"; cat = "snow"; g = b.rain === 2 ? "lightsnow" : b.rain === 3 ? "snow" : "heavysnow"; }
+      if (b.blizzard) { label = "Blizzard"; cat = "snow"; g = "blizzard"; }
+      else if (b.thunder) { label = "Thunderstorm"; cat = "heavy"; g = "storm"; }
+      else if (state.winter) { label = b.rain === 2 ? "Light snow" : b.rain === 3 ? "Snow" : "Heavy snow"; cat = "snow"; g = b.rain === 2 ? "lightsnow" : b.rain === 3 ? "snow" : "heavysnow"; }
       else { label = b.rain === 2 ? "Light rain" : b.rain === 3 ? "Rain" : "Heavy rain"; cat = b.rain >= 4 ? "heavy" : "rain"; g = b.rain === 2 ? "lightrain" : b.rain === 3 ? "rain" : "heavy"; }
       // Fog under precipitation is still worth knowing about.
       if (foggy) label += " and " + lower(fogLabel);
-    } else if (foggy) { label = fogLabel; cat = "fog"; g = b.fog >= 0.006 ? "densefog" : "fog"; }
+    } else if (foggy) { label = fogLabel; cat = "fog"; g = ["", "mist", "fog", "densefog", "thickfog"][fogLevel]; }
     var wind = b.wind <= 1 ? "Calm" : b.wind === 2 ? "Breezy" : "Strong wind";
     var windG = b.wind <= 1 ? "calm" : b.wind === 2 ? "breezy" : "wind";
-    return { label: label, cat: cat, g: g, wet: wet, foggy: foggy, wind: wind, windG: windG, sky: sky[1] };
+    return { label: label, cat: cat, g: g, wet: wet, foggy: foggy, fogLevel: fogLevel, blizzard: !!b.blizzard, thunder: !!b.thunder, wind: wind, windG: windG, sky: sky[1] };
   }
   function lower(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
 
@@ -695,8 +834,13 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   function changePhrase(prev, cur, when) {
     if (cur.wet && !prev.wet) return lower(cur.label) + " " + when.from;
     if (prev.wet && !cur.wet) return (state.winter ? "snow stops " : cur.sky === "clear" || cur.sky === "partly" ? "clearing " : "dry ") + when.by;
-    if (cur.foggy && !prev.foggy) return "fog rolling in " + when.at;
-    if (prev.foggy && !cur.foggy) return "fog lifting " + when.at;
+    if (cur.blizzard && !prev.blizzard) return "blizzard " + when.from;
+    if (cur.thunder && !prev.thunder) return "thunderstorm " + when.from;
+    if (prev.thunder && !cur.thunder && cur.wet) return "thunder passing " + when.at;
+    if (prev.blizzard && !cur.blizzard && cur.wet) return "blizzard easing " + when.at;
+    if (cur.foggy && !prev.foggy) return lower(FOG_NAMES[cur.fogLevel]) + " rolling in " + when.at;
+    if (prev.foggy && !cur.foggy) return (prev.fogLevel === 1 ? "mist clearing " : "fog lifting ") + when.at;
+    if (cur.foggy && prev.foggy && cur.fogLevel !== prev.fogLevel) return (cur.fogLevel > prev.fogLevel ? "fog thickening " : "fog thinning ") + when.at;
     return lower(cur.label) + " " + when.from;
   }
   // A change in the first couple of minutes reads as "within minutes" rather than a rounded-up "~5 min".
@@ -735,7 +879,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
 
   // ---- state ----------------------------------------------------------------
   var el = function (id) { return document.getElementById(id); };
-  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0, playFrom: 0, scrub: 0, opacity: 1, territories: false };
+  var state = { seed: newSeed(), blocks: [], map: MAPS[0], ahead: 0, slot: 0, season: 0, winter: false, load: 2, lock: true, radarOn: true, playing: false, playStart: 0, playFrom: 0, scrub: 0, alpha: 1, restFrom: 0, pb: { len: 12, scale: false, mode: "2", motion: "smooth", hold: 1, fade: 0.5, delay: 0.5, ring: true, readout: true }, opacity: 1, territories: false };
 
   function nowReal() { return Date.now() + state.ahead * 60e3; }
   function slotTimes() {
@@ -868,14 +1012,26 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   var bctx = buf.getContext("2d"), img = bctx.createImageData(GW, GH);
   var radarDirty = true, lastRadarT = null, lastPaint = 0;
 
-  // Radar colours in stepped bands, the way weather radar shows intensity: [from intensity, colour, opacity].
-  // Light rain is a faint wash so the map shows through; only the heavy cores, which are small, get strong.
+  // One colour per level the card names, changing exactly where the card's level changes (RAIN_STEPS), so
+  // the colour over a map is the word on its card: light rain, rain, heavy rain, the heaviest cores.
+  // [from intensity, colour, opacity]. Same values as the mod's RadarRenderer.
   var BANDS = {
-    rain: [[0.08, [118, 200, 110], 0.13], [0.16, [56, 168, 72], 0.18], [0.26, [28, 128, 52], 0.24], [0.38, [232, 214, 64], 0.32],
-           [0.52, [240, 150, 42], 0.4], [0.68, [222, 56, 44], 0.48], [0.84, [168, 24, 72], 0.56]],
-    snow: [[0.08, [150, 186, 232], 0.13], [0.16, [118, 160, 226], 0.18], [0.26, [86, 132, 214], 0.24], [0.38, [150, 200, 250], 0.32],
-           [0.52, [196, 224, 255], 0.4], [0.68, [230, 240, 255], 0.48], [0.84, [255, 255, 255], 0.56]]
+    rain: [[RAIN_STEPS[0], [86, 190, 92], 0.2], [RAIN_STEPS[1], [236, 208, 58], 0.32], [RAIN_STEPS[2], [232, 104, 40], 0.44], [RAIN_STEPS[3], [196, 28, 92], 0.56]],
+    snow: [[RAIN_STEPS[0], [168, 206, 246], 0.2], [RAIN_STEPS[1], [98, 150, 236], 0.32], [RAIN_STEPS[2], [58, 92, 222], 0.44], [RAIN_STEPS[3], [70, 40, 176], 0.56]]
   };
+  // Fog only where the card says fog / dense fog (FOG_STEPS): mauve, so it can't be mistaken for cloud, rain or snow.
+  // Each fog strength its own shade, deeper as it thickens: mist pale lilac, fog mauve, dense orchid, thick deep purple.
+  var FOG_RGBS = [[210, 200, 228], [200, 150, 225], [172, 100, 212], [128, 56, 178]], FOG_A = [0.12, 0.2, 0.28, 0.36], CLOUD_RGB = [214, 218, 216];
+  /** The fog veil at strength f: its opacity and colour, stepping up at each strength the card names. */
+  function fogShade(f) {
+    var a = 0, prev = 0, c = FOG_RGBS[0].slice();
+    for (var i = 0; i < FOG_STEPS.length; i++) {
+      var s = smoothstep(FOG_STEPS[i] - 0.012, FOG_STEPS[i] + 0.012, f);
+      a += (FOG_A[i] - prev) * s; prev = FOG_A[i];
+      for (var k = 0; k < 3; k++) c[k] += (FOG_RGBS[i][k] - c[k]) * s;
+    }
+    return { a: a, rgb: c };
+  }
   // How much of the radar shows at a drawn pixel: a superellipse fade starting well inside the frame, along
   // a wobbling line, so the radar never shows the straight side of its box.
   function edgeMask(i, j) {
@@ -902,35 +1058,79 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     }
     return (lutCache[key] = lut);
   }
+  // The key: rain (snow in winter) light to heaviest, fog and dense fog, partly cloudy and overcast.
+  function shade(rgb, k) { var bg = [13, 15, 15]; return "rgb(" + rgb.map(function (c, i) { return Math.round(bg[i] + (c - bg[i]) * k); }).join(",") + ")"; }
   function radarKey() {
     var bands = BANDS[state.winter ? "snow" : "rain"];
-    el("radarKey").innerHTML = "<b id=\"radarPattern\" class=\"radar-pattern\"></b><span>" + (state.winter ? "Snow" : "Rain") + "</span>" +
-      bands.map(function (bd) { return "<i style=\"background:rgb(" + bd[1].join(",") + ")\"></i>"; }).join("") +
-      "<span>Fog</span><i style=\"background:rgba(176,176,166,.55)\"></i>" +
-      "<span>Cloud</span><i style=\"background:rgba(214,218,216,.45)\"></i>";
+    el("radarKey").innerHTML = "<span>" + (state.winter ? "Snow" : "Rain") + "</span>" +
+      bands.map(function (bd) { return "<i style=\"background:" + shade(bd[1], 1) + "\"></i>"; }).join("") +
+      "<span>Fog</span>" + FOG_RGBS.map(function (c) { return "<i style=\"background:" + shade(c, 1) + "\"></i>"; }).join("") +
+      "<span>Cloud</span><i style=\"background:" + shade(CLOUD_RGB, 0.55) + "\"></i><i style=\"background:" + shade(CLOUD_RGB, 1) + "\"></i>";
   }
 
-  // The radar's position in the raid, 0 (start) to 1 (end). Play runs it once to the end and stops there;
-  // it never loops, so the picture never jumps back.
+  // The radar's position in the raid, 0 (start) to 1 (end), and how visible it is (fades at a play's wrap).
+  // One play: hold on the start, run through the raid, hold on the end, fade out. The next play, or the rest
+  // on the start after the last one, fades back in. The start is the moment the raid's opening weather is
+  // read (the 14-minute step the card opens with), as in the mod.
+  function raidSpan() { return state.map.indoor ? 40 : state.map.raid; }
+  function playLength() { return state.pb.len * (state.pb.scale ? raidSpan() / 40 : 1); }
   function radarTime() {
     var times = slotTimes(), t0 = times[state.slot] != null ? times[state.slot] : times[0];
-    var span = state.map.indoor ? 40 : state.map.raid;
+    t0 = Math.floor(t0 / STEP) * STEP;
+    var span = raidSpan(), H = state.pb.hold, L = playLength(), F = state.pb.fade, C = H + L + H + F;
+    state.alpha = 1;
     if (state.playing) {
-      state.scrub = Math.min(1, state.playFrom + (performance.now() - state.playStart) / 1000 / PLAY_SECONDS);
-      if (state.scrub >= 1) stopPlay();
+      var c = (performance.now() - state.playStart) / 1000 + (state.playFrom > 0 ? H + state.playFrom * L : 0);
+      var n = Math.floor(c / C), w = c - n * C;
+      var plays = state.pb.mode === "loop" ? Infinity : Math.max(1, Number(state.pb.mode) || 1);
+      if (n >= plays) stopPlay(true);
+      else if (w < H) { state.scrub = 0; if (n > 0 && F > 0 && w < F) state.alpha = w / F; }
+      else if (w < H + L) state.scrub = (w - H) / L;
+      else if (w < H + L + H) state.scrub = 1;
+      else { state.scrub = 1; state.alpha = F > 0 ? 1 - (w - H - L - H) / F : 0; }
     }
-    return { t: t0 + state.scrub * span * 60 * ACCEL, minute: state.scrub * span, end: state.scrub >= 1 };
+    if (!state.playing && state.restFrom) {
+      var since = (performance.now() - state.restFrom) / 1000;
+      state.alpha = F > 0 ? Math.min(1, since / F) : 1;
+      if (since >= F) state.restFrom = 0;
+    }
+    var t = t0 + state.scrub * span * 60 * ACCEL, from = null, mixK = 0;
+    if (state.pb.motion !== "smooth") {
+      // Only the 14-minute steps the raid reads: either cut between them or crossfade from one to the next.
+      var rel = (t - t0) / STEP, k = Math.floor(rel);
+      if (state.pb.motion === "xfade" && rel - k > 0) { from = t0 + k * STEP; t = from + STEP; mixK = rel - k; }
+      else t = t0 + k * STEP;
+    }
+    return { t: t, from: from, mix: mixK, minute: state.scrub * span, end: state.scrub >= 1 };
   }
-  function stopPlay() {
+  function stopPlay(finished) {
     state.playing = false;
+    if (finished) { state.scrub = 0; state.restFrom = performance.now(); el("radarScrub").value = 0; }
     el("radarPlay").setAttribute("aria-pressed", "false");
     el("radarPlay").textContent = state.scrub >= 1 ? "Replay" : "Play raid";
   }
+  function startPlay(from) {
+    state.playing = true;
+    state.restFrom = 0;
+    state.playFrom = from || 0;
+    state.playStart = performance.now();
+    el("radarPlay").setAttribute("aria-pressed", "true");
+    el("radarPlay").textContent = "Pause";
+  }
+  // A slot or map was picked: play after a short wait, so clicking through maps doesn't keep restarting it.
+  var autoTimer = null;
+  function autoPlay() {
+    clearTimeout(autoTimer);
+    if (state.pb.mode === "0" || state.map.indoor || !state.radarOn) return;
+    autoTimer = setTimeout(function () { startPlay(0); }, state.pb.delay * 1000);
+  }
   function resetRadarTime() {
     state.scrub = 0;
+    state.restFrom = 0;
     el("radarScrub").value = 0;
     stopPlay();
     radarDirty = true;
+    autoPlay();
   }
   // Keeps the canvas at the screen's real pixel size, so the radar is sharp at any resolution and zoom.
   function sizeRadar() {
@@ -967,44 +1167,72 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
         var rain = 0, fog = 0, cloud = 0;
         for (q = 0; q < 4; q++) { var wy = TY.wt[yi + q], at2 = TY.idx[yi + q] * GW + i; rain += wideRain[at2] * wy; fog += wideFog[at2] * wy; cloud += wideCloud[at2] * wy; }
         var k = (j * GW + i) * 4;
-        if (rain < 0.06 && fog < 0.15 && cloud < 0.03) { d[k + 3] = 0; continue; }
+        if (rain < RAIN_STEPS[0] - 0.01 && fog < FOG_STEPS[0] - 0.013 && cloud < 0.03) { d[k + 3] = 0; continue; }
         rain = rain > 1 ? 1 : rain < 0 ? 0 : rain;
         fog = fog > 1 ? 1 : fog < 0 ? 0 : fog;
         cloud = cloud > 1 ? 1 : cloud < 0 ? 0 : cloud;
         var li = Math.round(rain * 1023) * 4, ra = lut[li + 3];
-        var fa = smoothstep(0.15, 0.6, fog) * 0.16 * (1 - ra);
+        var fs = fogShade(fog), fo = fs.a, fa = fo * (1 - ra), fc = fs.rgb;
         // Cloud is a fainter white veil under rain and fog, broken into patches when partly cloudy.
-        var ca = cloud * 0.14 * (1 - ra) * (1 - fa / 0.16);
+        var ca = cloud * 0.14 * (1 - ra) * (1 - fo / FOG_A[FOG_A.length - 1]);
         // Fade out over a rounded rectangle with a wobbling edge, so wide rain or fog never ends in a straight line.
         var a = (ra + fa + ca) * state.opacity * edgeMask(i, j);
         if (a < 0.01) { d[k + 3] = 0; continue; }
         var sum = ra + fa + ca;
-        d[k] = (lut[li] * ra + 176 * fa + 214 * ca) / sum; d[k + 1] = (lut[li + 1] * ra + 176 * fa + 218 * ca) / sum; d[k + 2] = (lut[li + 2] * ra + 166 * fa + 216 * ca) / sum;
+        d[k] = (lut[li] * ra + fc[0] * fa + CLOUD_RGB[0] * ca) / sum; d[k + 1] = (lut[li + 1] * ra + fc[1] * fa + CLOUD_RGB[1] * ca) / sum; d[k + 2] = (lut[li + 2] * ra + fc[2] * fa + CLOUD_RGB[2] * ca) / sum;
         d[k + 3] = (a > 1 ? 1 : a) * 255;
       }
     }
     bctx.putImageData(img, 0, 0);
   }
 
+  // Painted frames, kept so a second play or a loop doesn't paint the same moments again.
+  var frames = {}, frameCount = 0;
+  function frameAt(t) {
+    var key = t + "|" + state.opacity + "|" + state.winter + "|" + state.seed;
+    if (frames[key]) return frames[key];
+    if (frameCount > 160) { frames = {}; frameCount = 0; }
+    paintField(t);
+    var c = document.createElement("canvas"); c.width = GW; c.height = GH;
+    c.getContext("2d").drawImage(buf, 0, 0);
+    frameCount++;
+    return (frames[key] = c);
+  }
+  var shownA = null, shownB = null, lastFrom = null;
   function frame(now) {
     var rt = radarTime();
-    if (state.radarOn && (radarDirty || (rt.t !== lastRadarT && now - lastPaint > 90))) {
-      paintField(rt.t); lastRadarT = rt.t; lastPaint = now; radarDirty = false;
+    if (state.radarOn && (radarDirty || rt.from !== lastFrom || (rt.t !== lastRadarT && now - lastPaint > 60))) {
+      shownA = frameAt(rt.t); shownB = rt.from !== null ? frameAt(rt.from) : null;
+      lastRadarT = rt.t; lastFrom = rt.from; lastPaint = now; radarDirty = false;
     }
     sizeRadar();
     rctx.clearRect(0, 0, radar.width, radar.height);
-    if (state.radarOn) {
+    if (state.radarOn && shownA) {
       // Already drawn at full detail, so only scaled to the screen; no blur needed.
       rctx.imageSmoothingEnabled = true;
       rctx.imageSmoothingQuality = "high";
-      rctx.drawImage(buf, 0, 0, radar.width, radar.height);
+      if (shownB) {
+        rctx.globalAlpha = state.alpha * (1 - rt.mix); rctx.drawImage(shownB, 0, 0, radar.width, radar.height);
+        rctx.globalAlpha = state.alpha * rt.mix; rctx.drawImage(shownA, 0, 0, radar.width, radar.height);
+      } else {
+        rctx.globalAlpha = state.alpha; rctx.drawImage(shownA, 0, 0, radar.width, radar.height);
+      }
+      rctx.globalAlpha = 1;
     }
+    var active = state.radarOn && (state.playing || state.scrub > 0);
+    var po = el("radarPlayout");
+    if (active && state.pb.readout) {
+      po.removeAttribute("data-off");
+      el("radarPlayText").textContent = "Raid +" + Math.floor(rt.minute) + " min" + (rt.end ? " \u00b7 end" : "");
+      el("radarPlayBar").style.width = (state.scrub * 100) + "%";
+    } else po.setAttribute("data-off", "");
+    Array.prototype.forEach.call(el("locs").children, function (b) {
+      b.classList.toggle("ring", active && state.pb.ring && MAPS[Number(b.dataset.i)] === state.map);
+    });
     if (state.playing) el("radarScrub").value = Math.round(state.scrub * 1000);
     el("radarTime").textContent = state.radarOn
       ? hhmm(rt.t) + (state.scrub > 0 ? "  +" + Math.floor(rt.minute) + " min" : "") + (rt.end ? " · raid end" : "")
       : "";
-    var patName = patternAt(rt.t).def.name;
-    if (el("radarPattern").textContent !== patName) el("radarPattern").textContent = patName;
     requestAnimationFrame(frame);
   }
 
@@ -1043,7 +1271,7 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     ["clear", false, "Clear"], ["clear", true, "Clear, night"], ["partly", false, "Partly cloudy"], ["partly", true, "Partly cloudy, night"],
     ["overcast", false, "Overcast"], ["storm", false, "Stormy skies"], ["lightrain", false, "Light rain"], ["rain", false, "Rain"],
     ["heavy", false, "Heavy rain"], ["lightsnow", false, "Light snow"], ["snow", false, "Snow"], ["heavysnow", false, "Heavy snow"],
-    ["fog", false, "Fog"], ["densefog", false, "Dense fog"], ["calm", false, "Calm"], ["breezy", false, "Breezy"], ["wind", false, "Strong wind"]
+    ["mist", false, "Mist"], ["fog", false, "Fog"], ["densefog", false, "Dense fog"], ["thickfog", false, "Thick fog"], ["blizzard", false, "Blizzard"], ["calm", false, "Calm"], ["breezy", false, "Breezy"], ["wind", false, "Strong wind"]
   ].map(function (x) { return "<span>" + glyph(x[0], x[1]) + x[2] + "</span>"; }).join("");
 
   buildMarkers();
@@ -1051,12 +1279,13 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     var b = e.target.closest("button[data-i]"); if (!b) return;
     state.map = MAPS[Number(b.dataset.i)];
     if (state.map.oneSlot) state.slot = 0;
-    resetRadarTime();
     markSelected(); render();
+    resetRadarTime();
+    pbLabels();
   });
   el("slots").addEventListener("click", function (e) {
     var b = e.target.closest("button[data-slot]"); if (!b) return;
-    state.slot = Number(b.dataset.slot); resetRadarTime(); render();
+    state.slot = Number(b.dataset.slot); render(); resetRadarTime();
     var again = el("slots").querySelector("[data-slot=\"" + state.slot + "\"]"); if (again) again.focus();
   });
   el("nextBtn").addEventListener("click", function () {
@@ -1066,20 +1295,18 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   });
   el("backBtn").addEventListener("click", function () { el("status").textContent = "Back would return to character selection in game."; });
   el("ahead").addEventListener("input", function (e) { state.ahead = Number(e.target.value); render(); });
-  function setSeason(winter) {
-    state.winter = winter;
-    el("seaSummer").setAttribute("aria-pressed", String(!winter));
-    el("seaWinter").setAttribute("aria-pressed", String(winter));
+  el("season").addEventListener("change", function (e) {
+    state.season = Number(e.target.value);
+    // The game draws falling snow in Winter and in the Storm season (a blizzard); every other season draws rain.
+    state.winter = state.season === 2 || state.season === 6;
     radarKey();
     render();
-  }
-  el("seaSummer").addEventListener("click", function () { setSeason(false); });
-  el("seaWinter").addEventListener("click", function () { setSeason(true); });
+  });
   el("load").addEventListener("input", function (e) { state.load = Number(e.target.value); render(); });
   el("lock").addEventListener("change", function (e) { state.lock = e.target.checked; render(); });
   el("restart").addEventListener("click", function () {
     var kept = el("persist").checked, at = new Date();
-    if (!kept) { state.seed = newSeed(); cellCache = {}; patternCache = {}; }
+    if (!kept) { state.seed = newSeed(); cellCache = {}; }
     render();
     var clock = pad(at.getHours()) + ":" + pad(at.getMinutes());
     el("status").innerHTML = kept
@@ -1093,15 +1320,30 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
     radarDirty = true;
   });
   el("radarPlay").addEventListener("click", function () {
+    clearTimeout(autoTimer);
     if (state.playing) { stopPlay(); return; }
     if (state.scrub >= 1) state.scrub = 0;
-    state.playing = true;
-    state.playFrom = state.scrub;
-    state.playStart = performance.now();
-    el("radarPlay").setAttribute("aria-pressed", "true");
-    el("radarPlay").textContent = "Pause";
+    startPlay(state.scrub);
     if (!state.radarOn) el("radarToggle").click();
   });
+  // Playback tuning.
+  function pbLabels() {
+    el("pbLenLabel").textContent = (state.pb.scale ? playLength().toFixed(1) : state.pb.len) + " s";
+    el("pbHoldLabel").textContent = state.pb.hold + " s";
+    el("pbFadeLabel").textContent = state.pb.fade.toFixed(1) + " s";
+    el("pbDelayLabel").textContent = state.pb.delay.toFixed(1) + " s";
+    el("raidMin").value = state.map.raid;
+    el("raidMinLabel").textContent = state.map.name + ": " + state.map.raid + " min" + (state.map.indoor ? " (no weather, not played)" : "");
+  }
+  [["pbLen", "len"], ["pbHold", "hold"], ["pbFade", "fade"], ["pbDelay", "delay"]].forEach(function (x) {
+    el(x[0]).addEventListener("input", function (e) { state.pb[x[1]] = Number(e.target.value); pbLabels(); });
+  });
+  el("pbScale").addEventListener("change", function (e) { state.pb.scale = e.target.checked; pbLabels(); });
+  el("pbRing").addEventListener("change", function (e) { state.pb.ring = e.target.checked; });
+  el("pbReadout").addEventListener("change", function (e) { state.pb.readout = e.target.checked; });
+  el("pbMode").addEventListener("change", function (e) { state.pb.mode = e.target.value; resetRadarTime(); });
+  el("pbMotion").addEventListener("change", function (e) { state.pb.motion = e.target.value; radarDirty = true; });
+  el("raidMin").addEventListener("input", function (e) { state.map.raid = Number(e.target.value); pbLabels(); render(); });
   el("opacity").addEventListener("input", function (e) {
     state.opacity = Number(e.target.value) / 100;
     e.target.title = e.target.value + "%";
@@ -1114,12 +1356,15 @@ code { font-family: var(--font-data); font-size: .9em; color: var(--fg); }
   });
   window.addEventListener("resize", function () { if (state.territories) paintTerritory(); radarDirty = true; });
   el("radarScrub").addEventListener("input", function (e) {
+    clearTimeout(autoTimer);
     state.scrub = Number(e.target.value) / 1000;
+    state.restFrom = 0;
     stopPlay();
     radarDirty = true;
   });
 
-  el("status").textContent = "Pick a location, then play the raid on the radar to watch what moves over it. The Tarkov clock runs live, 7 times faster than real time.";
+  pbLabels();
+  el("status").textContent = "Pick a location and a time: the radar plays that raid through, then rests on its start. Tune it under Radar playback. The Tarkov clock runs live, 7 times faster than real time.";
   radarKey();
   render();
   requestAnimationFrame(frame);
