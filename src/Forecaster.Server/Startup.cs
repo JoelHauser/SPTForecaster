@@ -18,7 +18,7 @@ namespace Forecaster.Server;
 public class Startup(WeatherSeed weather, ISptLogger<Startup> logger) : IOnLoad
 {
     /// <summary>SPT's Season enum, in order.</summary>
-    private static readonly string[] Seasons = ["summer", "autumn", "winter", "spring", "late autumn", "early spring", "storm season"];
+    internal static readonly string[] Seasons = ["summer", "autumn", "winter", "spring", "late autumn", "early spring", "storm season"];
 
     public Task OnLoadAsync(CancellationToken cancellationToken)
     {

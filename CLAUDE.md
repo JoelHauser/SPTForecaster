@@ -8,7 +8,7 @@ player-facing summary; the design detail is here. Called SPTForecaster up to 0.2
 
 ## Status
 
-1.0.0 released on GitHub 2026-10-30 (tag v1.0.0, Latest). PR #1 merged into `main` the same day; work on
+1.1.0 released on GitHub 2026-10-31 (tag v1.1.0, Latest): Weighted Season Randomizer compat, time bar without the game's weather caption/icon and with centred slots, Raids Are Infinite declared incompatible. 1.0.0 released 2026-10-30. PR #1 merged into `main` the same day; work on
 `main` from here (`release-0.2.0` is done). Not on the Forge yet (Joel uploads; the Forge is now
 sp-mod.com). Earlier development notes (0.0.x-0.3.0 test logs) are in this file's git history.
 
@@ -87,6 +87,7 @@ and `WeatherSeed.OldFilePath`, which carries `weather-seed.json` over from `user
   `GetWeatherTypeByNode` (thunder -> ThunderCloud), or our glyphs (`Glyphs.cs`, embedded PNGs drawn by
   tools/glyphs.py) for snow, blizzard, mist, dense/thick fog and night skies (the game ships no night
   sprites). `ForecastResult.Changes` is still computed, for the verbose log.
+- **Time bar** (`CompactBar`/`VanillaBar`): the game's bar (level48 `Conditions Panel`, 571 wide) is `Weather Caption`, `Weather` (the `_weatherIcon`) and `TimePhaseContainer` (inset 159 px right; toggles placed by hand at x 15 / 211). While the forecast is on (every map, Factory too), caption and icon are hidden, the container widened to the bar and the toggles centred together (one on Icebreaker); "SELECT TIME PHASE:" stays left. Centring is measured from the drawn checkbox + clock in `Canvas.willRenderCanvases` (after layout, before drawing); the slots stay at alpha 0 until it first lands, so they never jump. With the forecast off, all of it goes back, and the icon shows the forecast's opening weather while `Raid weather follows the forecast` is on (the game's own sprite otherwise).
 - **Radar** (`RadarLayer`, `RadarRenderer`): a RawImage on its own Canvas, same rect as the location buttons'
   container, just below the buttons and route lines. Rendered on a worker (121 x 81 grid, Catmull-Rom to
   480 x 320, one colour per card level, fog veils, cloud, wobbly superellipse edge fade), redrawn every 5 s
@@ -181,5 +182,13 @@ the first child of `Content/Map/Image`; the radar sits above it, translucent, an
 **Deploy Screen Overhaul** (sp-mod.com/mod/3047, Joel's, H:\SPTMods\LoadingRaid): lighting the PMC from
 `ForecasterApi.RaidWeather` exists only uncommitted in its working copy (new GUID first, then the old one);
 public DSO 1.1.0 never had it and uses the menu's weather. Joel chose not to ship a DSO update for now.
+
+**Weighted Season Randomizer** (sp-mod.com/mod/2479, `ca.bushtail.weightedseasonrandomizer` 2.0.1, release DLL read 2026-10-31): it rolls `WeatherConfig.OverrideSeason` at start-up and in a prefix on `WeatherCallbacks.GetLocalWeather` (the game calls it from `BaseLocalGame` while a raid loads, after the forecast was read). Server `WeightedSeasonRandomizerCompat` (Harmony, by name) skips that prefix and calls its `PushNewSeason` in a postfix on `MatchCallbacks.EndLocalRaidAsync`. Client `Schedule.HoldSeasonFor(world)` (from `SetWeatherNodesPatch`) keeps the raid's season until that GameWorld is gone (Fika: a friend ending first rolls mid-raid). Not run with WSR yet; Fika's raid end going through EndLocalRaidAsync unverified.
+
+**Season Rotator** (sp-mod.com/mod/2314): sets `OverrideSeason` once at server start; followed as is.
+
+**Raids Are Infinite** (sp-mod.com/mod/2903, ScrewTSW 1.1.0): NOT compatible, README says so. EscapeTimeLimit 99999 (forecast box rebuilds 70 real days every second, ~150k nodes) and the raid clock at real time x1 (nodes assume the Tarkov clock, so weather runs 7x slow, and neither slot matches). Joel chose not to support it.
+
+**SVM** raid time: adds up to 720 min to `EscapeTimeLimit` at load; we read EscapeTimeLimit, so it is followed.
 
 Other mods that set raid weather conflict; `Raid weather follows the forecast` off hands the weather back.

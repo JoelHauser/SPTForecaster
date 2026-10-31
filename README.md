@@ -2,13 +2,13 @@
 
 A weather forecast and a live weather radar for SPT's map select screen. Every map has its own weather, and the raid gets the weather the forecast showed.
 
-**Version 1.0.0** for SPT 4.1. [Download](https://github.com/JoelHauser/SPTForecaster/releases/latest)
+**Version 1.1.0** for SPT 4.1. [Download](https://github.com/JoelHauser/SPTForecaster/releases/latest)
 
 ## What you get
 
 - **Weather radar.** Rain, snow, fog and cloud drift across the map screen with the wind.
 - **Raid playback.** Pick a map and a time, and the radar plays out the weather over the length of that raid.
-- **Forecast.** A box above the time bar shows the weather and wind at the start of the raid, with the radar's key and the playback slider beside it. It uses the game's own fonts and weather icons.
+- **Forecast.** A box above the time bar shows the weather and wind at the start of the raid, with the radar's key and the playback slider beside it. It uses the game's own fonts and weather icons. The time bar below drops its own weather icon, which showed one weather for every map, and centres the time slots.
 - **Raid weather that matches.** You get the weather the forecast showed, changing during the raid when the radar showed it changing.
 - **New weather in raid:**
   - **Four fog strengths:** mist, fog, dense fog and thick fog.
@@ -29,12 +29,12 @@ The seed is saved on the server, so the weather survives restarts and everyone o
 
 ## Install
 
-Download `Forecaster-1.0.0.zip` from the [latest release](https://github.com/JoelHauser/SPTForecaster/releases/latest) and extract it into your SPT folder, the one with `EscapeFromTarkov.exe`. Both halves are needed:
+Download `Forecaster-1.1.0.zip` from the [latest release](https://github.com/JoelHauser/SPTForecaster/releases/latest) and extract it into your SPT folder, the one with `EscapeFromTarkov.exe`. Both halves are needed:
 
 - `BepInEx/plugins/Forecaster/`: the client plugin and its thunder sounds
 - `SPT_Runtime/user/mods/Forecaster/`: the server mod, which also keeps the weather seed
 
-When the server starts, its console shows `[Forecaster] 1.0.0 loaded, weather seed ready` and the season.
+When the server starts, its console shows `[Forecaster] 1.1.0 loaded, weather seed ready` and the season.
 
 **Updating from SPTForecaster (0.2.2 or earlier):** the mod is now called Forecaster. Install it, start the server once so it can copy your weather seed, then delete `BepInEx/plugins/SPTForecaster.dll`, the `BepInEx/plugins/SPTForecaster` folder and `SPT_Runtime/user/mods/SPTForecaster`. Your F12 settings start fresh.
 
@@ -54,6 +54,10 @@ When the server starts, its console shows `[Forecaster] 1.0.0 loaded, weather se
 - [Time & Weather Changer NG](https://sp-mod.com/mod/2120/time-weather-changer-ng): while its weather is switched on it takes over, and its thunder slider brings lightning. Switch it off and the forecast's weather comes back. Moving the clock keeps the forecast's weather for the new time.
 - [Deploy Screen Overhaul](https://sp-mod.com/mod/3047/deploy-screen-overhaul): it lights your PMC to match the raid's weather.
 - [Tushonka Territories](https://sp-mod.com/mod/2942/tushonka-territories): its faction map shows through under the radar.
+- [Weighted Season Randomizer](https://sp-mod.com/mod/2479/weighted-season-randomizer): it picks the next season when a raid ends instead of when one loads, so the forecast shows the season you'll play in.
+- [Season Rotator](https://sp-mod.com/mod/2314/season-rotator) and other mods that set the season: the forecast follows the season they pick.
+
+**Not compatible:** [Raids Are Infinite](https://sp-mod.com/mod/2903/raids-are-infinite). It runs the raid clock in real time and makes raids last almost forever, so the forecast, the radar and the raid weather no longer line up.
 
 Other mods that set raid weather will fight with this one. To let them handle it, turn off **Raid weather follows the forecast** (the forecast may then be wrong). Fika co-op is untested, but every player on a server gets the same weather seed.
 

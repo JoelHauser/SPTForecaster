@@ -1,4 +1,6 @@
 using System;
+using Comfort.Common;
+using EFT;
 using Newtonsoft.Json.Linq;
 using SPT.Common.Http;
 using UnityEngine;
@@ -52,6 +54,7 @@ namespace Forecaster
         private static bool _ready;
         private static bool _warned;
         private static bool _versionChecked;
+        private static GameWorld _heldFor;
 
         public static double Acceleration { get; private set; } = 7;
 
@@ -95,8 +98,12 @@ namespace Forecaster
 
                 var json = JObject.Parse(body);
                 Acceleration = json.Value<double?>("acceleration") ?? 7;
-                Season = json.Value<int?>("season") ?? 0;
-                Field.Season = Season;
+                if (!SeasonHeld)
+                {
+                    Season = json.Value<int?>("season") ?? 0;
+                    Field.Season = Season;
+                }
+
                 Field.Seed = json.Value<int>("seed");
                 CheckServerVersion(json.Value<string>("version"));
                 _ready = true;
@@ -111,6 +118,24 @@ namespace Forecaster
                     _warned = true;
                     ForecasterPlugin.Log.LogWarning($"Could not get the weather seed from the server ({ex.Message}). Is the Forecaster " + ForecasterPlugin.PluginVersion + " server mod installed?");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Keeps the season this raid's weather was built with until the raid's world is gone. A season mod may
+        /// change it on the server mid-raid (Weighted Season Randomizer rolls when a raid ends, and in Fika a
+        /// friend can end theirs first), but the game keeps the season it loaded the raid with.
+        /// </summary>
+        public static void HoldSeasonFor(GameWorld world) => _heldFor = world;
+
+        private static bool SeasonHeld
+        {
+            get
+            {
+                if (_heldFor == null) return false;
+                if (Singleton<GameWorld>.Instantiated && ReferenceEquals(Singleton<GameWorld>.Instance, _heldFor)) return true;
+                _heldFor = null;
+                return false;
             }
         }
 

@@ -323,6 +323,7 @@ namespace Forecaster
                 var location = world.LocationId;
                 if (Maps.NoForecast(location)) return;
                 if (!Schedule.Ready(force: true)) return;
+                Schedule.HoldSeasonFor(world);
                 if (!Maps.Position(location, out var x, out var y))
                 {
                     ForecasterPlugin.Log.LogWarning($"No map position for '{location}'; the raid keeps SPT's weather.");

@@ -8,7 +8,7 @@
     <AssemblyName>Forecaster.Server</AssemblyName>
 
     <!-- Must match ModMetadata.VersionText and the client's PluginVersion. -->
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
 
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -28,6 +28,7 @@
     <Reference Include="SPTarkov.DI"><HintPath>$(SPTServer)\SPTarkov.DI.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="SPTarkov.Common"><HintPath>$(SPTServer)\SPTarkov.Common.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Spectre.Console"><HintPath>$(SPTServer)\Spectre.Console.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(SPTServer)\0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="SemanticVersioning"><HintPath>$(SPTServer)\SemanticVersioning.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 

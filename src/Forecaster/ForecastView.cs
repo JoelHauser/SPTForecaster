@@ -148,12 +148,18 @@ namespace Forecaster
         /// <summary>An icon that isn't there still keeps its place, so the lines beside it stay lined up.</summary>
         private static void SetIcon(Image icon, ForecastLine line)
         {
-            var type = line?.Icon ?? EWeatherType.None;
-            // Our glyph where the game has no icon (snow, blizzard, mist, dense/thick fog, night skies).
-            var sprite = line?.Glyph != null ? Glyphs.Get(line.Glyph) : null;
-            if (sprite == null && type != EWeatherType.None) sprite = ResourcesCache.Pop<Sprite>("UI/WeatherIcons/" + type);
+            var sprite = IconSprite(line);
             icon.sprite = sprite;
             icon.enabled = sprite != null;
+        }
+
+        /// <summary>The line's icon: our glyph where the game has none (snow, blizzard, mist, dense/thick fog, night skies), else the game's.</summary>
+        internal static Sprite IconSprite(ForecastLine line)
+        {
+            var type = line?.Icon ?? EWeatherType.None;
+            var sprite = line?.Glyph != null ? Glyphs.Get(line.Glyph) : null;
+            if (sprite == null && type != EWeatherType.None) sprite = ResourcesCache.Pop<Sprite>("UI/WeatherIcons/" + type);
+            return sprite;
         }
 
         // ---- building blocks -----------------------------------------------------------------------

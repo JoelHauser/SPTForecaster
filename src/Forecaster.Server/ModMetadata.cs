@@ -5,7 +5,7 @@ namespace Forecaster.Server;
 public record ModMetadata : IModMetadata
 {
     /// <summary>The one place the server half names its version; must match the csproj and the client's PluginVersion.</summary>
-    public const string VersionText = "1.0.0";
+    public const string VersionText = "1.1.0";
 
     /// <summary>The same GUID the client plugin declares.</summary>
     public string ModGuid { get; init; } = "com.mybutthasarash.forecaster";
