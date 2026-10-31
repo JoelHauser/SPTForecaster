@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Comfort.Common;
 using EFT;
@@ -107,9 +108,11 @@ namespace Forecaster
         /// <summary>
         /// A map with the two slot toggles. Factory counts: its toggles pick day or night Factory, but they are
         /// the same left and right slots, so a choice made there carries on to the next map (and back).
+        /// Tushonka Mapping SDK maps with time selection on are added to NightTimeAllowedLocations, not AvailableMaps.
         /// </summary>
         private static bool FreeChoice(string id) =>
-            id != null && Array.IndexOf(LocationSettings.Location.AvailableMaps, id) >= 0 && id != "laboratory" && !Maps.OneSlot(id);
+            id != null && id != "laboratory" && !Maps.OneSlot(id) &&
+            (Array.IndexOf(LocationSettings.Location.AvailableMaps, id) >= 0 || LocationSettings.Location.NightTimeAllowedLocations.Contains(id));
 
         /// <summary>The game reports every slot change here, the player's and its own; only an ordinary map's counts.</summary>
         public static void Record(MatchMakerSelectionLocationScreen screen, EDateTime time)

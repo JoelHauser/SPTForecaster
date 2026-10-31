@@ -57,6 +57,7 @@ When the server starts, its console shows `[Forecaster] 1.1.0 loaded, weather se
 - [Weighted Season Randomizer](https://sp-mod.com/mod/2479/weighted-season-randomizer): it picks the next season when a raid ends instead of when one loads, so the forecast shows the season you'll play in.
 - [Season Rotator](https://sp-mod.com/mod/2314/season-rotator) and other mods that set the season: the forecast follows the season they pick.
 - [SVM](https://sp-mod.com/mod/236/server-value-modifier-svm): custom raid times are followed.
+- [Tushonka Mapping SDK](https://sp-mod.com/mod/3193/tushonka-mapping-sdk): custom maps get their own forecast and radar, on map pack pages too. Raid weather, lightning and thunder need a map built with the SDK's full weather system; maps built with its simple time of day have no weather to change.
 
 **Not compatible:** [Raids Are Infinite](https://sp-mod.com/mod/2903/raids-are-infinite). It runs the raid clock in real time and makes raids last almost forever, so the forecast, the radar and the raid weather no longer line up.
 
