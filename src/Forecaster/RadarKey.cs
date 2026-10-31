@@ -354,12 +354,16 @@ namespace Forecaster
                 1f);
         }
 
-        /// <summary>A white antialiased disc, made once.</summary>
+        /// <summary>
+        /// A white antialiased disc, made once. It is drawn about a tenth of its size, so it carries mipmaps
+        /// (trilinear): without them the GPU read a few texels of the 64 px disc per screen pixel and the dots'
+        /// edges came out jagged.
+        /// </summary>
         private static Sprite DotSprite()
         {
             if (_dot != null) return _dot;
-            const int n = 64;
-            var texture = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            const int n = 128;
+            var texture = new Texture2D(n, n, TextureFormat.RGBA32, true) { filterMode = FilterMode.Trilinear, wrapMode = TextureWrapMode.Clamp, anisoLevel = 0 };
             var pixels = new Color32[n * n];
             for (var j = 0; j < n; j++)
             {
@@ -372,7 +376,7 @@ namespace Forecaster
             }
 
             texture.SetPixels32(pixels);
-            texture.Apply(false);
+            texture.Apply(true, true);
             _dot = Sprite.Create(texture, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
             return _dot;
         }
