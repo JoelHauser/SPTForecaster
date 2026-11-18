@@ -360,7 +360,7 @@ namespace Forecaster
                 var built = Build(blocks, start, start - before, start + after, raidClock.Ticks, blendReal * Schedule.Acceleration);
                 if (built.Length < 2) return;
                 nodes = built;
-                BlizzardDriver.Set(blocks, start, raidClock.Ticks);
+                BlizzardDriver.Set(blocks, start, raidClock.Ticks, location);
                 Thunder.Set(blocks, start, raidClock.Ticks, x, y, raidMinutes);
 
                 if (ForecasterPlugin.VerboseLog.Value)

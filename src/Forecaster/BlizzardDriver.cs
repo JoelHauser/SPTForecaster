@@ -27,11 +27,14 @@ namespace Forecaster
         private float _factor;
         private bool _touched;
 
-        /// <summary>Called with the raid's blocks when its weather nodes are set.</summary>
-        public static void Set(List<Block> blocks, double start, long raidTicks)
+        /// <summary>
+        /// Called with the raid's blocks when its weather nodes are set. Where Winter Outbreak runs, its storm
+        /// owns the snowflakes and ours stays out (<see cref="WinterOutbreakCompat"/>).
+        /// </summary>
+        public static void Set(List<Block> blocks, double start, long raidTicks, string location)
         {
             Spans.Clear();
-            if (Schedule.Season == 2)
+            if (Schedule.Season == 2 && !WinterOutbreakCompat.Covers(location))
             {
                 foreach (var b in blocks)
                 {

@@ -402,7 +402,9 @@ namespace Forecaster
         {
             Maps.Position(_location.Id, out var x, out var y);
             var blocks = Field.Blocks(x, y, start - Field.Step, start + (raidMinutes + 5) * 60 * Schedule.Acceleration);
-            return Forecast.Build(blocks, start, raidMinutes);
+            var forecast = Forecast.Build(blocks, start, raidMinutes);
+            WinterOutbreakCompat.Adjust(forecast, _location.Id);
+            return forecast;
         }
 
         private void EnsureView(bool rebuild)

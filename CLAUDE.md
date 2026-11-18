@@ -185,6 +185,17 @@ public DSO 1.1.0 never had it and uses the menu's weather. Joel chose not to shi
 
 **Weighted Season Randomizer** (sp-mod.com/mod/2479, `ca.bushtail.weightedseasonrandomizer` 2.0.1, release DLL read 2026-10-31): it rolls `WeatherConfig.OverrideSeason` at start-up and in a prefix on `WeatherCallbacks.GetLocalWeather` (the game calls it from `BaseLocalGame` while a raid loads, after the forecast was read). Server `WeightedSeasonRandomizerCompat` (Harmony, by name) skips that prefix and calls its `PushNewSeason` in a postfix on `MatchCallbacks.EndLocalRaidAsync`. Client `Schedule.HoldSeasonFor(world)` (from `SetWeatherNodesPatch`) keeps the raid's season until that GameWorld is gone (Fika: a friend ending first rolls mid-raid). Not run with WSR yet; Fika's raid end going through EndLocalRaidAsync unverified.
 
+**Winter Outbreak** (github.com/harmonyzt/WinterOutbreak, `com.harmonyzt.winteroutbreak` 1.0.0, source read 2026-11-18;
+it uses Joel's BarrelHealing with permission): in Winter (`ESeason.Winter` only, not Storm) and off its `Disabled Maps`
+(substring match), it rolls None/Snowstorm/Blizzard at the deploy countdown (`Storm Chances`, default 100 %, 50/50) and holds
+it all raid: a `WeatherCurve` getter postfix wraps our curve (rain, fog, clouds, wind fixed; temperature ours), a
+`ControlScattering` prefix scales fog (Blizzard 0.025-0.22), a `SnowFlakes.Update` prefix sets StormFactor. Joel's rule:
+Winter Outbreak always wins. `WinterOutbreakCompat`: `BlizzardDriver` stands down where it covers the raid; the forecast
+box shows its odds (100 %: "Snowstorm or blizzard" + split; under 100 %: our forecast with "N % chance of a winter storm"
+as the wind line). With "Normal" rolled our nodes pass through. Asked the author (GitHub issue) for a static
+`PeekStorm(string locationId)` -> "Normal"/"Snowstorm"/"Blizzard"/null, rolled early and kept for the raid; the compat
+already calls it by reflection if present and shows that storm. Not run in game yet.
+
 **Season Rotator** (sp-mod.com/mod/2314): sets `OverrideSeason` once at server start; followed as is.
 
 **Raids Are Infinite** (sp-mod.com/mod/2903, ScrewTSW 1.1.0): NOT compatible, README says so. EscapeTimeLimit 99999 (forecast box rebuilds 70 real days every second, ~150k nodes) and the raid clock at real time x1 (nodes assume the Tarkov clock, so weather runs 7x slow, and neither slot matches). Joel chose not to support it.
