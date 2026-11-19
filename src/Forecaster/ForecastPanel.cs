@@ -172,7 +172,8 @@ namespace Forecaster
                     return;
                 }
 
-                var heading = "Forecast for the " + Maps.Clock(start) + " raid:";
+                var aurora = WinterOutbreakCompat.Aurora(_location.Id, start);
+                var heading = "Forecast for the " + Maps.Clock(start) + " raid" + (aurora != null ? ", " + aurora : "") + ":";
                 if (!Schedule.Ready())
                 {
                     _view.ShowMessage(heading, "Waiting for the server's weather");

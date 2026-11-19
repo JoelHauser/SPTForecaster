@@ -194,7 +194,11 @@ Winter Outbreak always wins. `WinterOutbreakCompat`: `BlizzardDriver` stands dow
 box shows its odds (100 %: "Snowstorm or blizzard" + split; under 100 %: our forecast with "N % chance of a winter storm"
 as the wind line). With "Normal" rolled our nodes pass through. Asked the author (GitHub issue) for a static
 `PeekStorm(string locationId)` -> "Normal"/"Snowstorm"/"Blizzard"/null, rolled early and kept for the raid; the compat
-already calls it by reflection if present and shows that storm. Not run in game yet.
+already calls it by reflection if present and shows that storm. Its northern lights (`Aurora / Enabled`; `Force Show`
+always, else one raid in four whose clock reads 22:00-04:00 at the countdown, drawn whatever the clouds) go in the box's
+heading as "25 % chance of northern lights" / "with northern lights". Left out on purpose (not what the player sees):
+a cold or frostbite warning (its cooling is the same in every covered raid, whatever the weather) and starting its
+snow depth from earlier snowfall (would change its system, and it always starts at 0). Not run in game yet.
 
 **Season Rotator** (sp-mod.com/mod/2314): sets `OverrideSeason` once at server start; followed as is.
 

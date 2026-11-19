@@ -106,6 +106,20 @@ namespace Forecaster
             }
         }
 
+        /// <summary>
+        /// Its northern lights, for the box's heading, or null. Its rule: once per raid at the countdown, if its
+        /// Aurora / Enabled is on, Force Show always, else a raid whose clock reads 22:00-04:00 gets them one
+        /// time in four (a Fika client takes the host's). They're drawn whatever the clouds, so the odds are the
+        /// whole story. The slot's clock keeps moving until the countdown, as the heading's does.
+        /// </summary>
+        public static string Aurora(string locationId, double start)
+        {
+            if (!Covers(locationId) || !Setting("Enabled", true, "Aurora")) return null;
+            if (Setting("Force Show", false, "Aurora")) return "with northern lights";
+            var hour = Schedule.Mod(start, Schedule.DaySeconds) / 3600;
+            return hour >= 22 || hour < 4 ? "25 % chance of northern lights" : null;
+        }
+
         private static void Replace(ForecastResult forecast, string headline, string glyph, string wind)
         {
             forecast.Headline = new ForecastLine { Text = headline, Glyph = glyph };
@@ -114,9 +128,9 @@ namespace Forecaster
             forecast.More = null;
         }
 
-        private static T Setting<T>(string key, T fallback)
+        private static T Setting<T>(string key, T fallback, string section = Section)
         {
-            return _plugin != null && _plugin.Config.TryGetEntry<T>(Section, key, out var entry) ? entry.Value : fallback;
+            return _plugin != null && _plugin.Config.TryGetEntry<T>(section, key, out var entry) ? entry.Value : fallback;
         }
     }
 }
