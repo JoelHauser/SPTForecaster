@@ -19,7 +19,7 @@ Extract the zip into your SPT folder (the one with `EscapeFromTarkov.exe`). Both
 - `BepInEx/plugins/Forecaster/`
 - `SPT_Runtime/user/mods/Forecaster/`
 
-When the server starts, its console shows `[Forecaster] 1.1.0 loaded, weather seed ready`.
+When the server starts, its console shows `[Forecaster] 1.2.0 loaded, weather seed ready`, followed by the season.
 
 > **Updating from SPTForecaster (0.2.2 or earlier)**
 
@@ -44,6 +44,7 @@ Install Forecaster, start the server once so it copies your weather seed, then d
 - [Weighted Season Randomizer](https://sp-mod.com/mod/2479/weighted-season-randomizer): the next season is picked when a raid ends, so the forecast shows the season you'll play in.
 - [Season Rotator](https://sp-mod.com/mod/2314/season-rotator) and other season mods: the forecast follows their season.
 - [SVM](https://sp-mod.com/mod/236/server-value-modifier-svm): custom raid times are followed.
+- [Winter Outbreak](https://sp-mod.com/mod/3392/winter-outbreak): in winter its storms decide the weather. The forecast and the radar show which storm each map gets (a snowstorm, a blizzard or none), and the raid gets that storm. Night raids show the chance of its northern lights. With Fika, the forecast gives the storm odds instead.
 
 > **Not compatible**
 
