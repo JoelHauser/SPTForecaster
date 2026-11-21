@@ -207,6 +207,10 @@ prefix on its private `RollPreset()` (called from `SelectRaidWeather` at the cou
 preset or null for the `WeatherLock` map and slot, then clears every roll. No roll for that slot, or settings changed: its own
 roll runs. Enabled from `ForecasterPlugin.Start`. Not with Fika installed (a client takes the host's storm), nor when PeekStorm
 exists. Drop the patch once the author ships PeekStorm.
+Radar (`WinterOutbreakCompat.RadarStorms`, read by `RadarLayer` on the main thread once a second and on slot changes):
+every forecast map is rolled for the shown slot and its storm raises the radar's snow/fog/cloud around it (Blizzard
+0.92/0.7/0.9, Snowstorm 0.45/0.5/0.36 in field units; Shepard weights 1/d^4 so a no-storm or disabled map keeps its own
+weather at its button; thins out 70-170 units past the nearest map; `Field.StormTexture` bands drift through playback).
 
 **Season Rotator** (sp-mod.com/mod/2314): sets `OverrideSeason` once at server start; followed as is.
 

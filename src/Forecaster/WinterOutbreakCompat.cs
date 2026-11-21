@@ -108,21 +108,9 @@ namespace Forecaster
             if (forecast == null || !Covers(locationId)) return;
             try
             {
-                string storm = null;
-                var known = false;
-                if (_peek != null)
+                if (Knows)
                 {
-                    storm = _peek.Invoke(null, new object[] { locationId }) as string;
-                    known = true;
-                }
-                else if (_rollPatched)
-                {
-                    storm = Roll(locationId, rightSlot);
-                    known = true;
-                }
-
-                if (known)
-                {
+                    var storm = Storm(locationId, rightSlot);
                     if (storm == "Blizzard") Replace(forecast, "Blizzard all raid", "Blizzard", "Strong wind");
                     else if (storm == "Snowstorm") Replace(forecast, "Snowstorm all raid", "HeavySnow", "Breezy");
                     return; // "Normal" or null: the forecast's own weather
@@ -191,7 +179,67 @@ namespace Forecaster
             Setting("_stormChance", "Storm Chance", 100) + "/" + Setting("_snowstormWeight", "Snowstorm Weight", 50)
             + "/" + Setting("_blizzardWeight", "Blizzard Weight", 50);
 
-        private static string RollKey(string locationId, bool rightSlot) => locationId.ToLowerInvariant() + (rightSlot ? " right" : " left");
+        /// <summary>Its storm for each map can be told before the raid: its PeekStorm, or our early roll.</summary>
+        private static bool Knows => _peek != null || _rollPatched;
+
+        /// <summary>The storm a map gets in this slot: "Normal", "Snowstorm", "Blizzard", or null where it won't run.</summary>
+        private static string Storm(string locationId, bool rightSlot) =>
+            _peek != null ? _peek.Invoke(null, new object[] { locationId }) as string : Roll(locationId, rightSlot);
+
+        /// <summary>A held storm on the radar: where (field frame) and how strong (field units, like Field.At).</summary>
+        internal struct RadarStorm
+        {
+            public double X, Y;
+            public float Rain, Fog, Cloud;
+        }
+
+        /// <summary>
+        /// The storm around each forecast map in this slot, for the radar (main thread; rolls the maps not rolled
+        /// yet, so a map's box later shows the same storm), or null when it can't say. Maps it leaves alone
+        /// (Disabled Maps, no storm rolled) are in the list at zero, so the storms next door don't spill over
+        /// their buttons. <paramref name="signature"/> changes whenever the picture would.
+        /// Strengths from its presets: Blizzard snowfall 1, fog 0.12 (thicker than our thickest), clouds 0.9;
+        /// Snowstorm 40 % of each. The fog is drawn below thick so the snow's colour still reads through it.
+        /// </summary>
+        public static RadarStorm[] RadarStorms(bool rightSlot, out string signature)
+        {
+            signature = "";
+            if (Schedule.Season != 2 || !Loaded || !Knows) return null;
+            try
+            {
+                var list = new List<RadarStorm>();
+                var seen = new HashSet<string>();
+                var any = false;
+                var sign = new System.Text.StringBuilder();
+                foreach (var id in Maps.Known())
+                {
+                    if (Maps.NoForecast(id) || !Maps.Position(id, out var x, out var y)) continue;
+                    if (!seen.Add(SameMap(id))) continue; // Ground Zero and its high-level twin share a spot and a roll
+                    var storm = Covers(id) ? Storm(id, rightSlot) : null;
+                    var spot = new RadarStorm { X = x, Y = y };
+                    if (storm == "Blizzard") { spot.Rain = 0.92f; spot.Fog = 0.7f; spot.Cloud = 0.9f; any = true; }
+                    else if (storm == "Snowstorm") { spot.Rain = 0.45f; spot.Fog = 0.5f; spot.Cloud = 0.36f; any = true; }
+                    list.Add(spot);
+                    sign.Append(id).Append('=').Append(storm ?? "-").Append(';');
+                }
+
+                if (!any) return null;
+                signature = sign.ToString();
+                return list.ToArray();
+            }
+            catch (Exception ex)
+            {
+                ForecasterPlugin.Log.LogWarning("Could not read Winter Outbreak's storms for the radar, not asking again: " + ex.Message);
+                _peek = null;
+                _plugin = null;
+                _rollPatched = false;
+                return null;
+            }
+        }
+
+        private static string SameMap(string locationId) => locationId.ToLowerInvariant().Replace("_high", "");
+
+        private static string RollKey(string locationId, bool rightSlot) => SameMap(locationId) + (rightSlot ? " right" : " left");
 
         /// <summary>This map and slot's storm, rolled once (again if its settings changed), its way: chance, then weights.</summary>
         private static string Roll(string locationId, bool rightSlot)

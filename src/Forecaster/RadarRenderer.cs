@@ -165,12 +165,36 @@ namespace Forecaster
         /// pixel written), bottom row first (Unity's texture order). The caller owns the buffers, so playback
         /// can keep several frames rendered ahead.
         /// </summary>
-        public static Color32[] Render(double t, float opacity, bool winter, Color32[] into)
+        public static Color32[] Render(double t, float opacity, bool winter, WinterOutbreakCompat.RadarStorm[] storms, Color32[] into)
         {
-            lock (Gate) return RenderLocked(t, opacity, winter, into);
+            lock (Gate) return RenderLocked(t, opacity, winter, storms, into);
         }
 
-        private static Color32[] RenderLocked(double t, float opacity, bool winter, Color32[] into)
+        // Held storms (Winter Outbreak's, one per map): each map's storm fills its surroundings, the next map's
+        // takes over halfway (sharper than halfway: weights 1/d^4), and they thin out between 70 and 170 field
+        // units past the nearest map, so the storm sits over the maps rather than to the frame's edge.
+        private const double StormNear = 70, StormFar = 170, StormSoften = 25;
+
+        private static void StormFloor(WinterOutbreakCompat.RadarStorm[] storms, double x, double y, double t,
+            out float rain, out float fog, out float cloud)
+        {
+            double sum = 0, r = 0, f = 0, c = 0, nearest = double.MaxValue;
+            foreach (var s in storms)
+            {
+                double dx = x - s.X, dy = y - s.Y, d2 = dx * dx + dy * dy;
+                var w = 1 / ((d2 + StormSoften) * (d2 + StormSoften));
+                sum += w; r += w * s.Rain; f += w * s.Fog; c += w * s.Cloud;
+                if (d2 < nearest) nearest = d2;
+            }
+
+            var fade = 1 - Step(Math.Sqrt(nearest), (StormNear + StormFar) / 2, (StormFar - StormNear) / 2);
+            r = r / sum * fade; f = f / sum * fade; c = c / sum * fade;
+            // Blowing bands, so a storm held all raid still moves: about ±0.1 around its strength.
+            if (r > 0.01) r = Math.Max(0, r + 0.2 * (Field.StormTexture(x, y, t) - 0.5) * fade);
+            rain = (float)r; fog = (float)f; cloud = (float)c;
+        }
+
+        private static Color32[] RenderLocked(double t, float opacity, bool winter, WinterOutbreakCompat.RadarStorm[] storms, Color32[] into)
         {
             var cells = Field.ActiveCells(t);
             float[] rain = Rain, fog = Fog, cloud = Cloud;
@@ -181,6 +205,11 @@ namespace Forecaster
                     double x = gi * Field.W / (GridW - 1), y = gj * Field.H / (GridH - 1);
                     Field.At(cells, x, y, t, out var r, out var f);
                     rain[n] = (float)r; fog[n] = (float)f; cloud[n] = (float)Field.CloudCover(x, y, t, r);
+                    if (storms == null) continue;
+                    StormFloor(storms, x, y, t, out var sr, out var sf, out var sc);
+                    if (sr > rain[n]) rain[n] = sr;
+                    if (sf > fog[n]) fog[n] = sf;
+                    if (sc > cloud[n]) cloud[n] = sc;
                 }
             }
 

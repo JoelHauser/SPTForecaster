@@ -531,6 +531,12 @@ namespace Forecaster
                 L(L(Lattice(xi, yi, zi + 1), Lattice(xi + 1, yi, zi + 1), u), L(Lattice(xi, yi + 1, zi + 1), Lattice(xi + 1, yi + 1, zi + 1), u), v), w);
         }
 
+        /// <summary>
+        /// Texture for a storm another mod holds over a map (0..1, mostly 0.3-0.7): snow bands blowing west to
+        /// east across the frame, about 100 units over a 40-minute raid, so a held storm still moves on the radar.
+        /// </summary>
+        internal static double StormTexture(double x, double y, double t) => Fbm(x / 45 - t / 8000, y / 45, t / 6000, true);
+
         private static double Fbm(double x, double y, double z, bool steadyZ = false)
         {
             double a = 0.5, sum = 0, norm = 0;

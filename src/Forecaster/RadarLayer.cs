@@ -59,6 +59,13 @@ namespace Forecaster
         public static float? PlayProgress { get; private set; }
 
         private static string _slotKey;
+        private static bool _rightSlot;
+
+        // Storms another mod holds over each map (Winter Outbreak), read on the main thread about once a second
+        // and whenever the slot changes, and handed to the worker with each render.
+        private WinterOutbreakCompat.RadarStorm[] _storms;
+        private string _stormSignature = "";
+        private float _nextStormCheck;
 
         /// <summary>
         /// What to show when the forecast panel isn't up (no map selected yet, or Labs): the slot the player
@@ -102,6 +109,7 @@ namespace Forecaster
         {
             TargetTime = start;
             RaidMinutes = raidMinutes > 0 ? raidMinutes : 40;
+            _rightSlot = rightSlot;
             var key = locationId + (rightSlot ? " right" : " left");
             if (key == _slotKey) return;
             _slotKey = key;
@@ -123,6 +131,18 @@ namespace Forecaster
             PlayProgress = null;
             _queuedAt = play && ForecasterPlugin.PlayRadar.Value ? Time.unscaledTime + WaitSeconds : -1f;
             _nextRedraw = 0;
+            _nextStormCheck = 0;
+        }
+
+        private void CheckStorms(float now)
+        {
+            if (now < _nextStormCheck) return;
+            _nextStormCheck = now + 1f;
+            var storms = WinterOutbreakCompat.RadarStorms(TargetTime == null ? SlotMemory.RightSlot : _rightSlot, out var signature);
+            if (signature == _stormSignature) return;
+            _storms = storms;
+            _stormSignature = signature;
+            _nextRedraw = 0; // the rest picture again, with them
         }
 
         /// <summary>Advances playback: the position in the raid and how visible the picture is.</summary>
@@ -266,6 +286,7 @@ namespace Forecaster
             {
                 var now = Time.unscaledTime;
                 Advance(now);
+                CheckStorms(now);
                 _image.color = new Color(1f, 1f, 1f, _alpha);
                 Collect();
 
@@ -375,10 +396,11 @@ namespace Forecaster
             var frame = new Frame { Index = index, Generation = _generation, Time = t, Rest = rest, Pixels = into };
             var opacity = ForecasterPlugin.RadarOpacity.Value;
             var winter = Schedule.Winter;
+            var storms = _storms;
             _pending = Task.Run(() =>
             {
                 var started = System.Diagnostics.Stopwatch.GetTimestamp();
-                RadarRenderer.Render(frame.Time, opacity, winter, frame.Pixels);
+                RadarRenderer.Render(frame.Time, opacity, winter, storms, frame.Pixels);
                 frame.RenderMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
                 return frame;
             });

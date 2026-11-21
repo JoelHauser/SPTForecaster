@@ -52,6 +52,9 @@ namespace Forecaster
 
         public static int RaidMinutes(string id) => id != null && RaidTimes.TryGetValue(id, out var m) ? m : 0;
 
+        /// <summary>Every location id with a known position (main thread: the list changes when the screen opens).</summary>
+        public static List<string> Known() => new List<string>(Icons.Keys);
+
         /// <summary>Where a location sits in the field's 600 x 400 frame (y down).</summary>
         public static bool Position(string id, out double x, out double y)
         {
