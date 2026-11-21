@@ -241,6 +241,14 @@ namespace Forecaster
             return true;
         }
 
+        /// <summary>The map and slot last confirmed, if under the age limit.</summary>
+        public static bool TryGetConfirmed(out string location, out bool rightSlot)
+        {
+            location = _location;
+            rightSlot = _rightSlot;
+            return _at >= 0 && Time.realtimeSinceStartup - _at <= MaxAgeSeconds && !string.IsNullOrEmpty(_location);
+        }
+
         /// <summary>The last confirmed start on this location, whichever slot it was.</summary>
         public static bool TryGetLatest(string location, out double start)
         {

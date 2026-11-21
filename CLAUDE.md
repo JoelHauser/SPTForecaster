@@ -191,14 +191,22 @@ it uses Joel's BarrelHealing with permission): in Winter (`ESeason.Winter` only,
 it all raid: a `WeatherCurve` getter postfix wraps our curve (rain, fog, clouds, wind fixed; temperature ours), a
 `ControlScattering` prefix scales fog (Blizzard 0.025-0.22), a `SnowFlakes.Update` prefix sets StormFactor. Joel's rule:
 Winter Outbreak always wins. `WinterOutbreakCompat`: `BlizzardDriver` stands down where it covers the raid; the forecast
-box shows its odds (100 %: "Snowstorm or blizzard" + split; under 100 %: our forecast with "N % chance of a winter storm"
-as the wind line). With "Normal" rolled our nodes pass through. Asked the author (GitHub issue) for a static
+box shows the storm we pre-rolled for that map and slot (below), or with Fika installed its odds (100 %: "Snowstorm or
+blizzard" + split; under 100 %: our forecast with "N % chance of a winter storm" as the wind line). With "Normal" rolled our nodes pass through. Asked the author (GitHub issue) for a static
 `PeekStorm(string locationId)` -> "Normal"/"Snowstorm"/"Blizzard"/null, rolled early and kept for the raid; the compat
 already calls it by reflection if present and shows that storm. Its northern lights (`Aurora / Enabled`; `Force Show`
 always, else one raid in four whose clock reads 22:00-04:00 at the countdown, drawn whatever the clouds) go in the box's
 heading as "25 % chance of northern lights" / "with northern lights". Left out on purpose (not what the player sees):
 a cold or frostbite warning (its cooling is the same in every covered raid, whatever the weather) and starting its
 snow depth from earlier snowfall (would change its system, and it always starts at 0). Not run in game yet.
+1.0.1 (2026-11-19) moved its settings to "1. Storms" / "7. Aurora" and dropped Force Show; the compat reads its
+ConfigEntry fields (`_stormChance`, `_snowstormWeight`, `_blizzardWeight`, `_disabledMaps`, `_auroraEnabled`) and falls back
+to either section. No reply on the issue yet (2026-11-21), so until `PeekStorm` exists we roll early ourselves (Joel's call):
+each map + slot gets one roll with its settings and its sums when the box first shows it (rerolled if the settings change), and a
+prefix on its private `RollPreset()` (called from `SelectRaidWeather` at the countdown) returns its static `Snowstorm`/`Blizzard`
+preset or null for the `WeatherLock` map and slot, then clears every roll. No roll for that slot, or settings changed: its own
+roll runs. Enabled from `ForecasterPlugin.Start`. Not with Fika installed (a client takes the host's storm), nor when PeekStorm
+exists. Drop the patch once the author ships PeekStorm.
 
 **Season Rotator** (sp-mod.com/mod/2314): sets `OverrideSeason` once at server start; followed as is.
 

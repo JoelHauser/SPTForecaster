@@ -167,7 +167,7 @@ namespace Forecaster
                 if (!ForecasterPlugin.ShowForecast.Value || !weather)
                 {
                     _view.Hide();
-                    if (!ForecasterPlugin.ShowForecast.Value && weather && ForecasterPlugin.ApplyWeather.Value && Schedule.Ready()) MatchGameIcon(Build(start, raidMinutes));
+                    if (!ForecasterPlugin.ShowForecast.Value && weather && ForecasterPlugin.ApplyWeather.Value && Schedule.Ready()) MatchGameIcon(Build(start, raidMinutes, rightSelected));
                     else RestoreGameIcon();
                     return;
                 }
@@ -180,7 +180,7 @@ namespace Forecaster
                     return;
                 }
 
-                var forecast = Build(start, raidMinutes);
+                var forecast = Build(start, raidMinutes, rightSelected);
                 _view.Show(forecast, heading);
 
                 // Once per change of map, slot or wording; the slot's clock alone ticks on every minute.
@@ -399,12 +399,12 @@ namespace Forecaster
         }
 
         /// <summary>This location's weather for a raid starting at <paramref name="start"/>: the field read at its button.</summary>
-        private ForecastResult Build(double start, int raidMinutes)
+        private ForecastResult Build(double start, int raidMinutes, bool rightSlot)
         {
             Maps.Position(_location.Id, out var x, out var y);
             var blocks = Field.Blocks(x, y, start - Field.Step, start + (raidMinutes + 5) * 60 * Schedule.Acceleration);
             var forecast = Forecast.Build(blocks, start, raidMinutes);
-            WinterOutbreakCompat.Adjust(forecast, _location.Id);
+            WinterOutbreakCompat.Adjust(forecast, _location.Id, rightSlot);
             return forecast;
         }
 

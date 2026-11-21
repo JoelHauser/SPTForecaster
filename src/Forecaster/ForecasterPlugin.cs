@@ -8,7 +8,7 @@ namespace Forecaster
     public class ForecasterPlugin : BaseUnityPlugin
     {
         /// <summary>Must match the csproj Version and the server mod's.</summary>
-        public const string PluginVersion = "1.1.0";
+        public const string PluginVersion = "1.2.0";
 
         internal static ManualLogSource Log;
 
@@ -121,6 +121,9 @@ namespace Forecaster
                 Log.LogWarning("The old SPTForecaster plugin is still installed and runs alongside Forecaster. "
                                + "Remove BepInEx/plugins/SPTForecaster.dll and the BepInEx/plugins/SPTForecaster folder.");
             }
+
+            // Every plugin has loaded by now; its storm roll is patched before the first location screen.
+            WinterOutbreakCompat.TryEnable();
         }
 
         /// <summary>A setting the F12 menu lists only with its advanced settings shown.</summary>
