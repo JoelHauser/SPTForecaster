@@ -198,7 +198,7 @@ already calls it by reflection if present and shows that storm. Its northern lig
 always, else one raid in four whose clock reads 22:00-04:00 at the countdown, drawn whatever the clouds) go in the box's
 heading as "25 % chance of northern lights" / "with northern lights". Left out on purpose (not what the player sees):
 a cold or frostbite warning (its cooling is the same in every covered raid, whatever the weather) and starting its
-snow depth from earlier snowfall (would change its system, and it always starts at 0). Not run in game yet.
+snow depth from earlier snowfall (would change its system, and it always starts at 0). Seen working 2026-11-21 (WO 1.0.1, SVM-forced Winter, Shoreline: box, radar and raid agreed).
 1.0.1 (2026-11-19) moved its settings to "1. Storms" / "7. Aurora" and dropped Force Show; the compat reads its
 ConfigEntry fields (`_stormChance`, `_snowstormWeight`, `_blizzardWeight`, `_disabledMaps`, `_auroraEnabled`) and falls back
 to either section. No reply on the issue yet (2026-11-21), so until `PeekStorm` exists we roll early ourselves (Joel's call):
