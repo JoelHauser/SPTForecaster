@@ -58,7 +58,7 @@ When the server starts, its console shows `[Forecaster] 1.1.0 loaded, weather se
 - [Season Rotator](https://sp-mod.com/mod/2314/season-rotator) and other mods that set the season: the forecast follows the season they pick.
 - [SVM](https://sp-mod.com/mod/236/server-value-modifier-svm): custom raid times are followed.
 - [Tushonka Mapping SDK](https://sp-mod.com/mod/3193/tushonka-mapping-sdk): custom maps get their own forecast and radar, on map pack pages too. Raid weather, lightning and thunder need a map built with the SDK's full weather system; maps built with its simple time of day have no weather to change.
-- [Winter Outbreak](https://github.com/harmonyzt/WinterOutbreak): in winter its storms decide the weather. On the maps where it runs, the forecast shows the storm you'll get (with Fika, the odds of a snowstorm or blizzard), and the chance of its northern lights on night raids.
+- [Winter Outbreak](https://sp-mod.com/mod/3392/winter-outbreak): in winter its storms decide the weather. On the maps where it runs, the forecast and the radar show the storm you'll get (with Fika, the forecast gives the odds of a snowstorm or blizzard), and the heading gives the chance of its northern lights on night raids.
 
 **Not compatible:** [Raids Are Infinite](https://sp-mod.com/mod/2903/raids-are-infinite). It runs the raid clock in real time and makes raids last almost forever, so the forecast, the radar and the raid weather no longer line up.
 

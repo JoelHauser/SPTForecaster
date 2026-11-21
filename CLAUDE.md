@@ -8,7 +8,7 @@ player-facing summary; the design detail is here. Called SPTForecaster up to 0.2
 
 ## Status
 
-1.1.0 released on GitHub 2026-10-31 (tag v1.1.0, Latest): Weighted Season Randomizer compat, time bar without the game's weather caption/icon and with centred slots, Raids Are Infinite declared incompatible. 1.0.0 released 2026-10-30. PR #1 merged into `main` the same day; work on
+1.2.0 released on GitHub 2026-11-21 (tag v1.2.0, Latest): Winter Outbreak compat (storm rolled early, shown in the box and on the radar; seen working in game), Tushonka Mapping SDK compat, SVM raid times listed. 1.1.0 released 2026-10-31: Weighted Season Randomizer compat, time bar without the game's weather caption/icon and with centred slots, Raids Are Infinite declared incompatible. 1.0.0 released 2026-10-30. PR #1 merged into `main` the same day; work on
 `main` from here (`release-0.2.0` is done). Not on the Forge yet (Joel uploads; the Forge is now
 sp-mod.com). Earlier development notes (0.0.x-0.3.0 test logs) are in this file's git history.
 
@@ -185,7 +185,7 @@ public DSO 1.1.0 never had it and uses the menu's weather. Joel chose not to shi
 
 **Weighted Season Randomizer** (sp-mod.com/mod/2479, `ca.bushtail.weightedseasonrandomizer` 2.0.1, release DLL read 2026-10-31): it rolls `WeatherConfig.OverrideSeason` at start-up and in a prefix on `WeatherCallbacks.GetLocalWeather` (the game calls it from `BaseLocalGame` while a raid loads, after the forecast was read). Server `WeightedSeasonRandomizerCompat` (Harmony, by name) skips that prefix and calls its `PushNewSeason` in a postfix on `MatchCallbacks.EndLocalRaidAsync`. Client `Schedule.HoldSeasonFor(world)` (from `SetWeatherNodesPatch`) keeps the raid's season until that GameWorld is gone (Fika: a friend ending first rolls mid-raid). Not run with WSR yet; Fika's raid end going through EndLocalRaidAsync unverified.
 
-**Winter Outbreak** (github.com/harmonyzt/WinterOutbreak, `com.harmonyzt.winteroutbreak` 1.0.0, source read 2026-11-18;
+**Winter Outbreak** (sp-mod.com/mod/3392, source github.com/harmonyzt/WinterOutbreak, `com.harmonyzt.winteroutbreak` 1.0.0, source read 2026-11-18;
 it uses Joel's BarrelHealing with permission): in Winter (`ESeason.Winter` only, not Storm) and off its `Disabled Maps`
 (substring match), it rolls None/Snowstorm/Blizzard at the deploy countdown (`Storm Chances`, default 100 %, 50/50) and holds
 it all raid: a `WeatherCurve` getter postfix wraps our curve (rain, fog, clouds, wind fixed; temperature ours), a
